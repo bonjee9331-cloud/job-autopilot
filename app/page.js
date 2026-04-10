@@ -1,19 +1,22 @@
 import StatCard from '../components/StatCard';
 import Table from '../components/Table';
-import { applications, candidateProfile, interviews, jobs } from '../lib/demo-data';
+import { applications, candidateProfile, interviews, jobs } from '../lib/data';
 import { appConfig } from '../lib/config';
 
 export default function HomePage() {
   const matchedJobs = jobs.filter((job) => job.status === 'matched').length;
-  const appliedJobs = jobs.filter((job) => job.status === 'applied' || job.status === 'interview').length;
+  const appliedJobs = jobs.filter(
+    (job) => job.status === 'applied' || job.status === 'interview'
+  ).length;
 
   return (
     <main className="stack">
       <section className="hero">
         <h1>Job search on autopilot</h1>
         <p>
-          This starter is configured for Ben Lynch with demo data and is ready to be connected to live job
-          feeds, Gmail, Calendar, and a database.
+          {appConfig.demoMode
+            ? 'This starter is configured with demo data.'
+            : 'Live mode is active.'}
         </p>
         <p className="small">
           Demo mode: <span className="badge">{appConfig.demoMode ? 'On' : 'Off'}</span>
@@ -21,51 +24,15 @@ export default function HomePage() {
       </section>
 
       <section className="grid">
-        <StatCard label="Target roles" value={candidateProfile.targetRoles.length} hint={candidateProfile.targetRoles.join(', ')} />
-        <StatCard label="Matched jobs" value={matchedJobs} hint="Jobs that fit your filters" />
-        <StatCard label="Applications" value={appliedJobs} hint="Applied or in progress" />
-        <StatCard label="Interviews" value={interviews.length} hint="Upcoming bookings and prep" />
+        <StatCard label="Target roles" value={candidateProfile.targetRoles.length} />
+        <StatCard label="Matched jobs" value={matchedJobs} />
+        <StatCard label="Applications" value={appliedJobs} />
+        <StatCard label="Interviews" value={interviews.length} />
       </section>
 
       <section>
-        <h2 className="section-title">Latest jobs</h2>
-        <Table
-          columns={[
-            { key: 'title', label: 'Role' },
-            { key: 'company', label: 'Company' },
-            { key: 'location', label: 'Location' },
-            { key: 'salary', label: 'Salary' },
-            { key: 'fitScore', label: 'Fit' }
-          ]}
-          rows={jobs}
-        />
-      </section>
-
-      <section>
-        <h2 className="section-title">Upcoming interviews</h2>
-        <Table
-          columns={[
-            { key: 'role', label: 'Role' },
-            { key: 'company', label: 'Company' },
-            { key: 'interviewAt', label: 'When' },
-            { key: 'prepSummary', label: 'Prep summary' }
-          ]}
-          rows={interviews.map((interview) => ({ ...interview, role: interview.role }))}
-        />
-      </section>
-
-      <section>
-        <h2 className="section-title">Application tracker</h2>
-        <Table
-          columns={[
-            { key: 'company', label: 'Company' },
-            { key: 'role', label: 'Role' },
-            { key: 'status', label: 'Status' },
-            { key: 'appliedAt', label: 'Applied' },
-            { key: 'followUpDueAt', label: 'Follow-up due' }
-          ]}
-          rows={applications}
-        />
+        <h2>Latest jobs</h2>
+        <Table rows={jobs} />
       </section>
     </main>
   );
