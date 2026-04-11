@@ -10,66 +10,58 @@ export default function RootLayout({
 }: {
   children: React.ReactNode;
 }) {
+  const navItems = [
+    { href: "/dashboard", label: "Dashboard" },
+    { href: "/jobs", label: "Jobs" },
+    { href: "/packages", label: "Packages" },
+    { href: "/brain", label: "Brain" },
+    { href: "/followups", label: "Follow-ups" },
+    { href: "/interviews", label: "Interviews" },
+    { href: "/settings", label: "Settings" },
+  ];
+
   return (
     <html lang="en">
-      <body className="bg-[#0b0f1a] text-white">
-        <div className="flex min-h-screen">
-
-          {/* SIDEBAR */}
-          <aside className="w-64 bg-[#0f1629] border-r border-[#1c2745] p-6 flex flex-col justify-between">
-            
+      <body>
+        <div className="app-shell">
+          <aside className="sidebar">
             <div>
-              {/* LOGO */}
-              <div className="mb-10">
-                <h1 className="text-xl font-bold tracking-tight">
-                  Job Autopilot
-                </h1>
-                <p className="text-xs text-gray-400">
-                  Automated search system
-                </p>
+              <div className="brand-block">
+                <h1 className="brand-title">Job Autopilot</h1>
+                <p className="brand-subtitle">Automated search system</p>
               </div>
 
-              {/* NAV */}
-              <nav className="space-y-2 text-sm">
-
-                <a href="/dashboard" className="nav-link">Dashboard</a>
-                <a href="/jobs" className="nav-link">Jobs</a>
-                <a href="/packages" className="nav-link">Packages</a>
-                <a href="/followups" className="nav-link">Follow-ups</a>
-                <a href="/interviews" className="nav-link">Interviews</a>
-                <a href="/settings" className="nav-link">Settings</a>
-
+              <nav className="sidebar-nav">
+                {navItems.map((item) => (
+                  <a key={item.href} href={item.href} className="nav-link">
+                    {item.label}
+                  </a>
+                ))}
               </nav>
             </div>
 
-            {/* FOOTER */}
-            <div className="text-xs text-gray-500">
-              v1.0 • Ben Lynch System
+            <div className="sidebar-footer">
+              <div className="badge badge-orange">Live Build</div>
+              <p>Ben Lynch System</p>
             </div>
-
           </aside>
 
-          {/* MAIN */}
-          <main className="flex-1 flex flex-col">
+          <main className="main-shell">
+            <header className="topbar">
+              <div>
+                <h2 className="topbar-title">Your pipeline control center</h2>
+                <p className="topbar-subtitle">Hua Hin · AU focus · remote-first workflow</p>
+              </div>
 
-            {/* TOP BAR */}
-            <header className="h-16 border-b border-[#1c2745] flex items-center justify-between px-6 bg-[#0b0f1a]">
-              <h2 className="text-lg font-semibold">
-                Your pipeline control center
-              </h2>
-
-              <div className="text-sm text-gray-400">
-                Hua Hin • AU Focus
+              <div className="topbar-actions">
+                <a href="/jobs" className="btn btn-primary">Search Jobs</a>
+                <a href="/packages" className="btn btn-secondary">Open Packages</a>
+                <a href="/followups" className="btn btn-secondary">Follow-ups</a>
               </div>
             </header>
 
-            {/* PAGE CONTENT */}
-            <div className="p-8">
-              {children}
-            </div>
-
+            <section className="page-wrap">{children}</section>
           </main>
-
         </div>
       </body>
     </html>
