@@ -8,9 +8,18 @@ export default function ResumeBuilderPage() {
   const [resume, setResume] = useState(null);
   const [loadingPackages, setLoadingPackages] = useState(true);
   const [loadingResume, setLoadingResume] = useState(false);
+  const [downloading, setDownloading] = useState("");
   const [error, setError] = useState("");
   const [warning, setWarning] = useState("");
   const [copyMessage, setCopyMessage] = useState("");
+
+  const [contact, setContact] = useState({
+    name: "Ben Lynch",
+    email: "",
+    phone: "",
+    location: "Hua Hin, Thailand",
+    linkedin: ""
+  });
 
   useEffect(() => {
     loadPackages();
@@ -95,6 +104,51 @@ export default function ResumeBuilderPage() {
     }
   }
 
+  async function downloadFile(type) {
+    if (!resume) return;
+
+    setDownloading(type);
+    setError("");
+
+    try {
+      const payload = {
+        ...contact,
+        headline: resume.headline,
+        professionalSummary: resume.professionalSummary,
+        keySkills: resume.keySkills || [],
+        experienceBullets: resume.experienceBullets || []
+      };
+
+      const res = await fetch(`/api/resume-export/${type}`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json"
+        },
+        body: JSON.stringify(payload)
+      });
+
+      if (!res.ok) {
+        const text = await res.text();
+        throw new Error(text || `Failed to download ${type.toUpperCase()}`);
+      }
+
+      const blob = await res.blob();
+      const url = window.URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = type === "pdf" ? "Ben_Lynch_Resume.pdf" : "Ben_Lynch_Resume.docx";
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      window.URL.revokeObjectURL(url);
+    } catch (err) {
+      console.error(err);
+      setError(err.message || `Failed to download ${type.toUpperCase()}`);
+    } finally {
+      setDownloading("");
+    }
+  }
+
   return (
     <main className="stack">
       <section className="hero">
@@ -120,7 +174,7 @@ export default function ResumeBuilderPage() {
       {warning ? (
         <section className="card">
           <h2>Warning</h2>
-          <p>{warning}</p>
+          <p style={{ wordBreak: "break-word" }}>{warning}</p>
         </section>
       ) : null}
 
@@ -180,6 +234,72 @@ export default function ResumeBuilderPage() {
               </h2>
               <p><strong>Fit score:</strong> {selectedPackage.fit_score ?? "-"}</p>
               <p><strong>Resume version:</strong> {selectedPackage.resume_version_name || "Not named"}</p>
+            </section>
+          ) : null}
+
+          {resume ? (
+            <section className="card">
+              <h2>Contact Details For Export</h2>
+
+              <div className="form-grid">
+                <label>
+                  Full name
+                  <input
+                    value={contact.name}
+                    onChange={(e) => setContact((c) => ({ ...c, name: e.target.value }))}
+                  />
+                </label>
+
+                <label>
+                  Email
+                  <input
+                    value={contact.email}
+                    onChange={(e) => setContact((c) => ({ ...c, email: e.target.value }))}
+                  />
+                </label>
+
+                <label>
+                  Phone
+                  <input
+                    value={contact.phone}
+                    onChange={(e) => setContact((c) => ({ ...c, phone: e.target.value }))}
+                  />
+                </label>
+
+                <label>
+                  Location
+                  <input
+                    value={contact.location}
+                    onChange={(e) => setContact((c) => ({ ...c, location: e.target.value }))}
+                  />
+                </label>
+
+                <label style={{ gridColumn: "1 / -1" }}>
+                  LinkedIn
+                  <input
+                    value={contact.linkedin}
+                    onChange={(e) => setContact((c) => ({ ...c, linkedin: e.target.value }))}
+                  />
+                </label>
+              </div>
+
+              <div style={{ display: "flex", gap: "10px", marginTop: "16px", flexWrap: "wrap" }}>
+                <button
+                  className="btn btn-primary"
+                  onClick={() => downloadFile("docx")}
+                  disabled={downloading === "docx"}
+                >
+                  {downloading === "docx" ? "Downloading Word..." : "Download Word"}
+                </button>
+
+                <button
+                  className="btn btn-orange"
+                  onClick={() => downloadFile("pdf")}
+                  disabled={downloading === "pdf"}
+                >
+                  {downloading === "pdf" ? "Downloading PDF..." : "Download PDF"}
+                </button>
+              </div>
             </section>
           ) : null}
 
