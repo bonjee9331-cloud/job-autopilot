@@ -15,6 +15,7 @@ export default function RootLayout({
     { href: "/jobs", label: "Jobs" },
     { href: "/packages", label: "Packages" },
     { href: "/brain", label: "Brain" },
+    { href: "/resume-builder", label: "Resume Builder" },
     { href: "/followups", label: "Follow-ups" },
     { href: "/interviews", label: "Interviews" },
     { href: "/settings", label: "Settings" },
@@ -56,6 +57,7 @@ export default function RootLayout({
               <div className="topbar-actions">
                 <a href="/jobs" className="btn btn-primary">Search Jobs</a>
                 <a href="/packages" className="btn btn-secondary">Open Packages</a>
+                <a href="/resume-builder" className="btn btn-secondary">Resume Builder</a>
                 <a href="/followups" className="btn btn-secondary">Follow-ups</a>
               </div>
             </header>
