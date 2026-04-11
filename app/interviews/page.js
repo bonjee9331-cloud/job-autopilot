@@ -1,219 +1,57 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState } from 'react';
+import SectionCard from '../../components/SectionCard';
 
-export default function InterviewPrepPage() {
+export default function InterviewsPage() {
   const [packages, setPackages] = useState([]);
+  const [selected, setSelected] = useState(null);
   const [prep, setPrep] = useState(null);
-  const [selectedPackage, setSelectedPackage] = useState(null);
-  const [loadingPackages, setLoadingPackages] = useState(true);
-  const [loadingPrep, setLoadingPrep] = useState(false);
-  const [error, setError] = useState("");
+  const [status, setStatus] = useState('');
+  const [calendarStatus, setCalendarStatus] = useState('');
 
   useEffect(() => {
-    loadPackages();
+    fetch('/api/packages').then((r) => r.json()).then((d) => setPackages(d.packages || [])).catch(() => {});
   }, []);
 
-  async function loadPackages() {
-    setLoadingPackages(true);
-    setError("");
-
-    try {
-      const res = await fetch("/api/packages");
-      const text = await res.text();
-
-      let data;
-      try {
-        data = JSON.parse(text);
-      } catch {
-        throw new Error("Invalid JSON returned while loading packages");
-      }
-
-      if (!res.ok || !data.ok) {
-        throw new Error(data.error || "Failed to load packages");
-      }
-
-      setPackages(data.packages || []);
-    } catch (err) {
-      console.error(err);
-      setError(err.message || "Failed to load packages");
-    } finally {
-      setLoadingPackages(false);
-    }
+  async function generatePrep(item) {
+    setSelected(item);
+    setStatus('Generating interview prep...');
+    const res = await fetch('/api/interview-prep', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(item) });
+    const data = await res.json();
+    if (!data.ok) return setStatus(data.error || 'Failed to generate prep');
+    setPrep(data.data);
+    setStatus('Interview prep ready.');
   }
 
-  async function generatePrep(pkg) {
-    setSelectedPackage(pkg);
-    setPrep(null);
-    setLoadingPrep(true);
-    setError("");
-
-    try {
-      const res = await fetch("/api/interview-prep", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json"
-        },
-        body: JSON.stringify({
-          job_title: pkg.job_title,
-          company: pkg.company,
-          job_description: pkg.job_description,
-          tailoredSummary: pkg.tailored_summary,
-          tailoredExperienceBullets: pkg.tailored_experience_bullets || [],
-          tailoredSkills: pkg.tailored_skills || []
-        })
-      });
-
-      const text = await res.text();
-
-      let data;
-      try {
-        data = JSON.parse(text);
-      } catch {
-        throw new Error("Invalid JSON returned from interview prep API");
-      }
-
-      if (!res.ok || !data.ok) {
-        throw new Error(data.error || "Failed to generate interview prep");
-      }
-
-      setPrep(data.data);
-    } catch (err) {
-      console.error(err);
-      setError(err.message || "Interview prep failed");
-    } finally {
-      setLoadingPrep(false);
-    }
+  async function scheduleMockInterview() {
+    const res = await fetch('/api/calendar/schedule', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ title: `Interview prep - ${selected?.job_title || 'Role'}`, start: new Date().toISOString(), end: new Date(Date.now() + 3600000).toISOString(), reminders: [1440, 60] }) });
+    const data = await res.json();
+    setCalendarStatus(data.message || 'Calendar scheduling shell ready');
   }
 
   return (
     <main className="stack">
-      <section className="hero">
-        <h1>Interview Prep Engine</h1>
-        <p>Select a saved package to generate tailored interview preparation.</p>
-      </section>
-
-      {error ? (
-        <section className="card">
-          <h2>Error</h2>
-          <p>{error}</p>
-        </section>
-      ) : null}
-
-      <section
-        style={{
-          display: "grid",
-          gridTemplateColumns: "320px 1fr",
-          gap: "20px",
-          alignItems: "start"
-        }}
-      >
-        <aside className="card">
-          <h2>Saved Packages</h2>
-
-          {loadingPackages ? <p>Loading packages...</p> : null}
-
-          {!loadingPackages && packages.length === 0 ? (
-            <p>No saved packages found.</p>
-          ) : null}
-
-          <div style={{ display: "grid", gap: "10px" }}>
-            {packages.map((pkg) => {
-              const isSelected = selectedPackage?.id === pkg.id;
-
-              return (
-                <button
-                  key={pkg.id}
-                  onClick={() => generatePrep(pkg)}
-                  style={{
-                    textAlign: "left",
-                    padding: "12px",
-                    borderRadius: "10px",
-                    border: isSelected ? "2px solid #111" : "1px solid #ccc",
-                    background: "#fff",
-                    cursor: "pointer"
-                  }}
-                >
-                  <strong>{pkg.job_title}</strong>
-                  <div>{pkg.company}</div>
-                  <div style={{ fontSize: "12px", opacity: 0.7 }}>
-                    Fit: {pkg.fit_score ?? "-"}
-                  </div>
-                </button>
-              );
-            })}
-          </div>
+      <section className="hero"><h1>Interviews</h1><p>Role-specific questions, answer critique, mock interview shell, and calendar integration foundation.</p></section>
+      {status ? <SectionCard title="Status"><p>{status}</p></SectionCard> : null}
+      {calendarStatus ? <SectionCard title="Calendar"><p>{calendarStatus}</p></SectionCard> : null}
+      <div style={{ display: 'grid', gridTemplateColumns: '320px 1fr', gap: 18 }}>
+        <aside className="mobile-panel stack">
+          <h2 style={{ margin: 0 }}>Packages</h2>
+          {packages.map((item) => <button key={item.id} onClick={() => generatePrep(item)} style={{ textAlign: 'left', padding: 12, borderRadius: 14, border: selected?.id === item.id ? '2px solid #ff8a1f' : '1px solid #294488', background: '#fff', color: '#08162f' }}><strong>{item.job_title}</strong><div>{item.company}</div></button>)}
         </aside>
-
         <section className="stack">
-          {!selectedPackage ? (
-            <section className="card">
-              <p>Select a package from the left to generate interview prep.</p>
-            </section>
-          ) : null}
-
-          {selectedPackage ? (
-            <section className="card">
-              <h2>
-                {selectedPackage.job_title} at {selectedPackage.company}
-              </h2>
-              <p><strong>Fit score:</strong> {selectedPackage.fit_score ?? "-"}</p>
-              <p><strong>Resume version:</strong> {selectedPackage.resume_version_name || "Not named"}</p>
-            </section>
-          ) : null}
-
-          {loadingPrep ? (
-            <section className="card">
-              <p>Generating interview prep...</p>
-            </section>
-          ) : null}
-
           {prep ? (
             <>
-              <section className="card">
-                <h2>🔥 60-Second Pitch</h2>
-                <p style={{ whiteSpace: "pre-wrap" }}>{prep.pitch}</p>
-              </section>
-
-              <section className="card">
-                <h2>Likely Interview Questions</h2>
-                <ul>
-                  {(prep.questions || []).map((q, i) => (
-                    <li key={i}>{q}</li>
-                  ))}
-                </ul>
-              </section>
-
-              <section className="card">
-                <h2>Strong Answer Angles</h2>
-                <ul>
-                  {(prep.answers || []).map((a, i) => (
-                    <li key={i}>{a}</li>
-                  ))}
-                </ul>
-              </section>
-
-              <section className="card">
-                <h2>Company-Specific Angles</h2>
-                <ul>
-                  {(prep.companyAngles || []).map((c, i) => (
-                    <li key={i}>{c}</li>
-                  ))}
-                </ul>
-              </section>
-
-              <section className="card">
-                <h2>Red Flags To Prepare For</h2>
-                <ul>
-                  {(prep.redFlags || []).map((r, i) => (
-                    <li key={i}>{r}</li>
-                  ))}
-                </ul>
-              </section>
+              <SectionCard title="60-second pitch" actions={<button className="btn btn-secondary" onClick={scheduleMockInterview}>Create prep event</button>}><p>{prep.pitch}</p></SectionCard>
+              <SectionCard title="Likely interview questions"><ul>{(prep.questions || []).map((q, i) => <li key={i}>{q}</li>)}</ul></SectionCard>
+              <SectionCard title="Answer critique / answer angles"><ul>{(prep.answers || []).map((a, i) => <li key={i}>{a}</li>)}</ul></SectionCard>
+              <SectionCard title="Company angles"><ul>{(prep.companyAngles || []).map((x, i) => <li key={i}>{x}</li>)}</ul></SectionCard>
+              <SectionCard title="Red flags"><ul>{(prep.redFlags || []).map((x, i) => <li key={i}>{x}</li>)}</ul></SectionCard>
             </>
-          ) : null}
+          ) : <SectionCard title="Mock interviews"><p>Select a package to generate role-specific prep. Voice mode can be layered later without changing the data model.</p></SectionCard>}
         </section>
-      </section>
+      </div>
     </main>
   );
 }

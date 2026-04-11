@@ -1,9 +1,9 @@
-export default function StatCard({ label, value, hint }) {
+export default function StatCard({ label, value, helper }) {
   return (
-    <div className="card">
-      <div className="muted">{label}</div>
-      <div className="stat">{value}</div>
-      {hint ? <div className="small">{hint}</div> : null}
+    <div className="stat-card">
+      <div className="stat-label">{label}</div>
+      <div className="stat-value">{value}</div>
+      {helper ? <div className="stat-helper">{helper}</div> : null}
     </div>
   );
 }

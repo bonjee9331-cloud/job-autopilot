@@ -1,188 +1,110 @@
-'use client';
+"use client";
 
 import { useEffect, useMemo, useState } from 'react';
-
-function formatDate(value) {
-  if (!value) return 'Not set';
-  return new Date(value).toLocaleString();
-}
-
-function dueLabel(item) {
-  if (!item.follow_up_due_at) return 'No follow-up date';
-  const now = new Date();
-  const due = new Date(item.follow_up_due_at);
-  return due <= now ? 'Due now' : 'Upcoming';
-}
-
-function Section({ title, items }) {
-  return (
-    <section className="card">
-      <h2>{title}</h2>
-      {!items.length ? (
-        <p>No items.</p>
-      ) : (
-        <div style={{ display: 'grid', gap: '12px' }}>
-          {items.map((item) => (
-            <article
-              key={item.id}
-              style={{
-                border: '1px solid #ddd',
-                borderRadius: '10px',
-                padding: '12px'
-              }}
-            >
-              <h3>
-                {item.job_title} at {item.company}
-              </h3>
-              <p><strong>Fit score:</strong> {item.fit_score ?? '-'}</p>
-              <p><strong>Pipeline status:</strong> {item.pipeline_status || 'new'}</p>
-              <p><strong>Application status:</strong> {item.application_status || 'draft'}</p>
-              <p><strong>Created:</strong> {formatDate(item.created_at)}</p>
-              <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap' }}>
-                <a href="/packages">Open packages</a>
-                {item.application_status === 'applied' ? <a href="/followups">Open follow-ups</a> : null}
-              </div>
-            </article>
-          ))}
-        </div>
-      )}
-    </section>
-  );
-}
+import StatCard from '../../components/StatCard';
+import SectionCard from '../../components/SectionCard';
+import Badge from '../../components/Badge';
 
 export default function DashboardPage() {
-  const [summary, setSummary] = useState(null);
-  const [items, setItems] = useState([]);
-  const [loading, setLoading] = useState(true);
+  const [data, setData] = useState({ summary: null, items: [] });
   const [error, setError] = useState('');
 
   useEffect(() => {
-    async function loadDashboard() {
-      setLoading(true);
-      setError('');
-
-      try {
-        const res = await fetch('/api/dashboard');
-        const text = await res.text();
-
-        let data;
-        try {
-          data = JSON.parse(text);
-        } catch {
-          throw new Error('Server returned non-JSON response');
-        }
-
-        if (!res.ok || !data.ok) {
-          throw new Error(data.error || 'Failed to load dashboard');
-        }
-
-        setSummary(data.summary || null);
-        setItems(data.items || []);
-      } catch (err) {
-        setError(err.message || 'Something went wrong');
-      } finally {
-        setLoading(false);
-      }
-    }
-
-    loadDashboard();
+    fetch('/api/dashboard').then((r) => r.json()).then(setData).catch((e) => setError(e.message));
   }, []);
 
   const grouped = useMemo(() => {
+    const items = data.items || [];
     return {
-      shortlisted: items.filter((x) => x.pipeline_status === 'shortlisted'),
-      saved: items.filter((x) => x.pipeline_status === 'saved'),
-      applied: items.filter((x) => x.application_status === 'applied'),
-      followups: items.filter(
-        (x) => x.application_status === 'applied' && x.follow_up_due_at
-      ),
-      ignored: items.filter((x) => x.pipeline_status === 'ignored')
+      discovered: items.filter((x) => (x.pipeline_status || 'new') === 'new').slice(0, 6),
+      shortlisted: items.filter((x) => x.pipeline_status === 'shortlisted').slice(0, 6),
+      applied: items.filter((x) => x.application_status === 'applied').slice(0, 6),
+      interviews: items.filter((x) => x.application_status === 'interview').slice(0, 6),
+      overdue: items.filter((x) => x.follow_up_due_at && new Date(x.follow_up_due_at) < new Date()).slice(0, 6),
+      recentPackages: items.slice(0, 5),
+      topFit: [...items].sort((a, b) => (b.fit_score || 0) - (a.fit_score || 0)).slice(0, 5)
     };
-  }, [items]);
+  }, [data]);
 
   return (
     <main className="stack">
       <section className="hero">
-        <h1>Applications Dashboard</h1>
-        <p>Your pipeline control center.</p>
+        <h1>Pipeline Dashboard</h1>
+        <p>Command center for targets, actions, applications, and interview momentum.</p>
       </section>
 
-      {loading ? (
-        <section className="card">
-          <p>Loading dashboard...</p>
-        </section>
-      ) : null}
+      {error ? <SectionCard title="Error"><p>{error}</p></SectionCard> : null}
 
-      {error ? (
-        <section className="card">
-          <h2>Error</h2>
-          <p>{error}</p>
-        </section>
-      ) : null}
+      <section className="grid">
+        <StatCard label="Targets tracked" value={data.summary?.total || 0} helper="All records in sniper memory" />
+        <StatCard label="Shortlisted" value={data.summary?.shortlisted || 0} helper="High-priority targets" />
+        <StatCard label="Applied" value={data.summary?.applied || 0} helper="Submission stage active" />
+        <StatCard label="Overdue" value={data.summary?.overdue || 0} helper="Needs follow-up now" />
+        <StatCard label="Interviews" value={data.summary?.interviews || 0} helper="Upcoming and in flight" />
+        <StatCard label="Offers" value={data.summary?.offers || 0} helper="Conversion endgame" />
+      </section>
 
-      {!loading && !error && summary ? (
-        <>
-          <section className="grid">
-            <div className="card">
-              <h2>Total</h2>
-              <p>{summary.total}</p>
-            </div>
-            <div className="card">
-              <h2>Shortlisted</h2>
-              <p>{summary.shortlisted}</p>
-            </div>
-            <div className="card">
-              <h2>Saved</h2>
-              <p>{summary.saved}</p>
-            </div>
-            <div className="card">
-              <h2>Applied</h2>
-              <p>{summary.applied}</p>
-            </div>
-            <div className="card">
-              <h2>Follow-ups Due</h2>
-              <p>{summary.followupsDue}</p>
-            </div>
-            <div className="card">
-              <h2>Ignored</h2>
-              <p>{summary.ignored}</p>
-            </div>
-          </section>
-
-          <Section title="Shortlisted" items={grouped.shortlisted} />
-          <Section title="Saved For Later" items={grouped.saved} />
-          <Section title="Applied" items={grouped.applied} />
-
-          <section className="card">
-            <h2>Follow-up Queue Snapshot</h2>
-            {!grouped.followups.length ? (
-              <p>No follow-ups queued.</p>
-            ) : (
-              <div style={{ display: 'grid', gap: '12px' }}>
-                {grouped.followups.map((item) => (
-                  <article
-                    key={item.id}
-                    style={{
-                      border: '1px solid #ddd',
-                      borderRadius: '10px',
-                      padding: '12px'
-                    }}
-                  >
-                    <h3>
-                      {item.job_title} at {item.company}
-                    </h3>
-                    <p><strong>Follow-up due:</strong> {formatDate(item.follow_up_due_at)}</p>
-                    <p><strong>Status:</strong> {dueLabel(item)}</p>
-                    <a href="/followups">Open follow-up queue</a>
-                  </article>
-                ))}
+      <section className="pipeline-grid">
+        {[
+          ['Discovered', grouped.discovered],
+          ['Shortlisted', grouped.shortlisted],
+          ['Applied', grouped.applied],
+          ['Interview / Overdue', [...grouped.interviews, ...grouped.overdue].slice(0, 6)]
+        ].map(([label, items]) => (
+          <div key={label} className="pipeline-col">
+            <h3>{label}</h3>
+            {items.length ? items.map((item) => (
+              <div key={item.id} className="item-card">
+                <strong>{item.job_title}</strong>
+                <div className="small">{item.company}</div>
+                <div className="row">
+                  <Badge tone="blue">Fit {item.fit_score || 0}</Badge>
+                  {item.application_status ? <Badge tone="orange">{item.application_status}</Badge> : null}
+                </div>
               </div>
-            )}
-          </section>
+            )) : <div className="small">No items.</div>}
+          </div>
+        ))}
+      </section>
 
-          <Section title="Ignored" items={grouped.ignored} />
-        </>
-      ) : null}
+      <section className="grid">
+        <SectionCard title="Top-fit shortlist" subtitle="Best current targets by score">
+          <div className="stack">
+            {grouped.topFit.map((item) => (
+              <div key={item.id} className="item-card">
+                <strong>{item.job_title}</strong>
+                <div className="small">{item.company}</div>
+                <div className="row"><Badge tone="green">Fit {item.fit_score || 0}</Badge></div>
+              </div>
+            ))}
+          </div>
+        </SectionCard>
+
+        <SectionCard title="Daily actions" subtitle="What to do next, fast">
+          <div className="stack">
+            <div className="item-card"><strong>Run sniper search</strong><div className="small">Refresh high-fit roles from all sources.</div></div>
+            <div className="item-card"><strong>Send follow-ups</strong><div className="small">Work overdue items before noon.</div></div>
+            <div className="item-card"><strong>Prep live interviews</strong><div className="small">Use the interview engine to sharpen answers.</div></div>
+          </div>
+        </SectionCard>
+      </section>
+
+      <section className="grid">
+        <SectionCard title="Recent packages">
+          <div className="stack">
+            {grouped.recentPackages.map((item) => (
+              <div key={item.id} className="item-card"><strong>{item.resume_version_name || item.job_title}</strong><div className="small">{item.company}</div></div>
+            ))}
+          </div>
+        </SectionCard>
+        <SectionCard title="Overdue follow-ups">
+          <div className="stack">
+            {grouped.overdue.length ? grouped.overdue.map((item) => (
+              <div key={item.id} className="item-card"><strong>{item.job_title}</strong><div className="small">{item.company}</div><div className="small">Due: {new Date(item.follow_up_due_at).toLocaleString()}</div></div>
+            )) : <p className="small">No overdue follow-ups.</p>}
+          </div>
+        </SectionCard>
+      </section>
     </main>
   );
 }
