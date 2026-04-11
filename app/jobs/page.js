@@ -37,6 +37,8 @@ export default function JobsPage() {
   const [error, setError] = useState('');
   const [jobs, setJobs] = useState([]);
   const [debug, setDebug] = useState(null);
+  const [packageLoadingId, setPackageLoadingId] = useState('');
+  const [packageMessage, setPackageMessage] = useState('');
 
   async function runSearch(event) {
     event.preventDefault();
@@ -44,6 +46,7 @@ export default function JobsPage() {
     setError('');
     setJobs([]);
     setDebug(null);
+    setPackageMessage('');
 
     try {
       const response = await fetch('/api/jobs/search', {
@@ -81,11 +84,48 @@ export default function JobsPage() {
     }
   }
 
+  async function generatePackage(job) {
+    setPackageLoadingId(`${job.source}-${job.external_id}`);
+    setPackageMessage('');
+    setError('');
+
+    try {
+      const response = await fetch('/api/brain/analyze', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          jobTitle: job.title,
+          company: job.company,
+          jobDescription: stripHtml(job.description)
+        })
+      });
+
+      const text = await response.text();
+
+      let data;
+      try {
+        data = JSON.parse(text);
+      } catch {
+        throw new Error('Server returned non-JSON response');
+      }
+
+      if (!response.ok || !data.ok) {
+        throw new Error(data.error || 'Failed to generate package');
+      }
+
+      setPackageMessage(`Package created successfully for ${job.title}`);
+    } catch (err) {
+      setError(err.message || 'Something went wrong');
+    } finally {
+      setPackageLoadingId('');
+    }
+  }
+
   return (
     <main className="stack">
       <section className="hero">
         <h1>Multi-Source Job Search</h1>
-        <p>Search across multiple sources, filter aggressively, and save matched jobs into your pipeline.</p>
+        <p>Search across multiple sources, filter aggressively, and generate tailored application packages directly from live jobs.</p>
       </section>
 
       <section className="card">
@@ -152,6 +192,13 @@ export default function JobsPage() {
         </form>
       </section>
 
+      {packageMessage ? (
+        <section className="card">
+          <p>{packageMessage}</p>
+          <a href="/packages">Open saved packages</a>
+        </section>
+      ) : null}
+
       {error ? (
         <section className="card">
           <h2>Error</h2>
@@ -180,30 +227,42 @@ export default function JobsPage() {
           <p>No jobs loaded yet.</p>
         ) : (
           <div style={{ display: 'grid', gap: '12px' }}>
-            {jobs.map((job) => (
-              <article
-                key={`${job.source}-${job.external_id}`}
-                style={{ border: '1px solid #ddd', borderRadius: '10px', padding: '14px' }}
-              >
-                <h3>{job.title}</h3>
-                <p><strong>Company:</strong> {job.company}</p>
-                <p><strong>Location:</strong> {job.location}</p>
-                <p><strong>Source:</strong> {job.source}</p>
-                <p><strong>Fit score:</strong> {job.fit_score}</p>
-                <p><strong>Matched title:</strong> {job.matched_title || 'None'}</p>
-                <p><strong>Salary:</strong> {job.salary_text || 'Not listed'}</p>
-                <p><strong>Remote:</strong> {job.remote ? 'Yes' : 'No'}</p>
-                <p style={{ whiteSpace: 'pre-wrap' }}>
-                  {stripHtml(job.description).slice(0, 500)}
-                  {stripHtml(job.description).length > 500 ? '...' : ''}
-                </p>
-                {job.apply_url ? (
-                  <a href={job.apply_url} target="_blank" rel="noreferrer">
-                    Open job
-                  </a>
-                ) : null}
-              </article>
-            ))}
+            {jobs.map((job) => {
+              const loadingId = `${job.source}-${job.external_id}`;
+              const isGenerating = packageLoadingId === loadingId;
+
+              return (
+                <article
+                  key={loadingId}
+                  style={{ border: '1px solid #ddd', borderRadius: '10px', padding: '14px' }}
+                >
+                  <h3>{job.title}</h3>
+                  <p><strong>Company:</strong> {job.company}</p>
+                  <p><strong>Location:</strong> {job.location}</p>
+                  <p><strong>Source:</strong> {job.source}</p>
+                  <p><strong>Fit score:</strong> {job.fit_score}</p>
+                  <p><strong>Matched title:</strong> {job.matched_title || 'None'}</p>
+                  <p><strong>Salary:</strong> {job.salary_text || 'Not listed'}</p>
+                  <p><strong>Remote:</strong> {job.remote ? 'Yes' : 'No'}</p>
+                  <p style={{ whiteSpace: 'pre-wrap' }}>
+                    {stripHtml(job.description).slice(0, 500)}
+                    {stripHtml(job.description).length > 500 ? '...' : ''}
+                  </p>
+
+                  <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap' }}>
+                    {job.apply_url ? (
+                      <a href={job.apply_url} target="_blank" rel="noreferrer">
+                        Open job
+                      </a>
+                    ) : null}
+
+                    <button onClick={() => generatePackage(job)} disabled={isGenerating}>
+                      {isGenerating ? 'Generating package...' : 'Generate package'}
+                    </button>
+                  </div>
+                </article>
+              );
+            })}
           </div>
         )}
       </section>
