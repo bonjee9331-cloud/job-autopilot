@@ -32,7 +32,7 @@ async function runOpenAI(prompt) {
   const data = tryParseJson(text);
 
   if (!response.ok || !data) {
-    throw new Error("OpenAI draft generation failed");
+    throw new Error(`OpenAI draft generation failed: ${text}`);
   }
 
   const content = data?.choices?.[0]?.message?.content || "";
@@ -46,10 +46,15 @@ async function runOpenAI(prompt) {
 }
 
 async function runAnthropic(prompt) {
+  const apiKey = process.env.ANTHROPIC_API_KEY;
+  if (!apiKey) {
+    throw new Error("Missing ANTHROPIC_API_KEY");
+  }
+
   const response = await fetch("https://api.anthropic.com/v1/messages", {
     method: "POST",
     headers: {
-      "x-api-key": process.env.ANTHROPIC_API_KEY,
+      "x-api-key": apiKey,
       "anthropic-version": "2023-06-01",
       "Content-Type": "application/json",
     },
@@ -70,14 +75,14 @@ async function runAnthropic(prompt) {
   const data = tryParseJson(text);
 
   if (!response.ok || !data) {
-    throw new Error("Anthropic refinement failed");
+    throw new Error(`Anthropic API request failed: ${text}`);
   }
 
   const content = data?.content?.[0]?.text || "";
   const parsed = tryParseJson(content);
 
   if (!parsed) {
-    throw new Error("Anthropic returned invalid JSON");
+    throw new Error(`Anthropic returned invalid JSON: ${content}`);
   }
 
   return parsed;
@@ -181,15 +186,31 @@ Rules:
 - No invented tools or metrics
 - Improve clarity, confidence, and commercial edge
 - Strengthen readability and recruiter impact
+- Return JSON only
 `;
 
-    const finalResume = await runAnthropic(anthropicPrompt);
+    try {
+      const finalResume = await runAnthropic(anthropicPrompt);
 
-    return NextResponse.json({
-      ok: true,
-      data: finalResume,
-      draft: openAiDraft,
-    });
+      return NextResponse.json({
+        ok: true,
+        data: finalResume,
+        draft: openAiDraft,
+        warning: null,
+      });
+    } catch (anthropicError) {
+      return NextResponse.json({
+        ok: true,
+        data: {
+          ...openAiDraft,
+          finalNotes: [
+            "Anthropic refinement was unavailable, so this version is the OpenAI draft.",
+          ],
+        },
+        draft: openAiDraft,
+        warning: anthropicError.message || "Anthropic refinement failed",
+      });
+    }
   } catch (err) {
     return NextResponse.json(
       {
