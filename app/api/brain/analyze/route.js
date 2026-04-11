@@ -45,17 +45,17 @@ Your job is to produce high-performance, recruiter-ready application content tha
 
 CRITICAL RULES:
 - NEVER invent fake metrics, percentages, revenue figures, or tools
-- ONLY include numbers if they are clearly supported by the candidate context or job alignment
+- ONLY include numbers if clearly supported by the candidate context
 - If no number is available, use strong commercial language instead
-- Avoid generic phrases like "results-driven" unless backed by specifics
-- No fluff, no filler, no corporate clichés
-- Every bullet must sound like it came from a top performer, not AI
+- No fluff, no filler, no weak generic claims
+- Every bullet should sound like a top performer wrote it
 
 WRITING STYLE:
-- Direct, confident, commercially focused
-- Outcome-first language
-- Emphasize revenue, performance, conversion, leadership impact
-- Tight, sharp bullet points (no rambling)
+- Direct
+- Sharp
+- Outcome-focused
+- ATS-friendly
+- Human
 `
           },
           {
@@ -78,19 +78,18 @@ Return JSON in exactly this structure:
 
 Candidate context:
 - Name: Ben Lynch
-- Target roles: Sales Manager, Sales Operations Manager, Sales Team Leader, Contact Center Manager, Remote Sales Manager
-- Locations: Australia, New Zealand
-- Remote only: Yes
+- Target roles: Sales Manager, Sales Operations Manager, Sales Team Leader, Contact Center Manager, Remote Sales Manager, Telesales Manager
+- Locations: Australia, New Zealand, remote-friendly roles with workable hours from Hua Hin
+- Remote only preferred: Yes
 - Minimum salary: $70k
 - Excluded industries: Finance, Investments, Real Estate, Car Sales
-
-Background:
-- Remote sales leadership
-- Team coaching and performance improvement
-- KPI tracking (conversion rates, revenue, sales per hour)
-- Contact center and outbound sales environment
-- Recruitment, onboarding, and training
-- Sales operations and process improvement
+- Background:
+  - Remote sales leadership
+  - Team coaching and performance improvement
+  - KPI tracking including conversion rates, revenue, and sales per hour
+  - Contact center and outbound sales environment
+  - Recruitment, onboarding, and training
+  - Sales operations and process improvement
 
 Job title:
 ${jobTitle}
@@ -101,57 +100,17 @@ ${company}
 Job description:
 ${jobDescription}
 
-INSTRUCTIONS:
-
-1. Extract ATS keywords (important phrases from job description)
-
-2. Strengths:
-- Align directly with the job
-- Make them feel commercially valuable
-
-3. Gaps:
-- Only include real gaps if relevant
-- Keep minimal
-
-4. Tailored Summary:
-- Strong opening positioning
-- No fluff
-- Sound like a high performer
-
-5. Tailored Skills:
-- Relevant, ATS-friendly, no filler
-
-6. Tailored Experience Bullets:
-- 8 bullets max
-- MUST sound like real performance
-- Use metrics ONLY if believable and aligned
-- Otherwise use strong outcome language:
-  - "lifted conversion consistency"
-  - "tightened KPI discipline"
-  - "improved revenue performance"
-- Avoid fake precision like "32.7%"
-
-7. Resume Version Name:
-- Clear and specific (Company + Role)
-
-8. Resume Snapshot:
-- Clean, interview-ready CV section
-- No fluff
-
-9. Cover Letter:
-- NO "I am excited"
-- NO generic intro
-- Structure:
-  - Opening: direct value statement
-  - Middle: how you drive results
-  - Close: why you're relevant to THIS role
-- Keep it sharp and human
-
-10. Fit Score:
-- Be realistic
-- 75–88 = strong fit
-- 88–92 = very strong fit
-- Only go above 92 if near perfect match
+Instructions:
+1. Extract ATS keywords
+2. Identify strongest matching strengths
+3. Keep gaps minimal and real
+4. Write a tailored CV summary
+5. Write tailored skills
+6. Write 8 tailored experience bullets
+7. Create a resume version name using company and role
+8. Create a resume snapshot
+9. Write a role-specific cover letter
+10. Give a realistic fit score
 
 Return JSON only.
 `
@@ -202,7 +161,7 @@ Return JSON only.
       },
       body: JSON.stringify({
         job_title: jobTitle,
-        company: company,
+        company,
         job_description: jobDescription,
         keywords: parsed.keywords,
         strengths: parsed.strengths,
