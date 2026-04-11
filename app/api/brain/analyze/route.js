@@ -14,33 +14,50 @@ export async function POST(req) {
 
     if (!jobTitle || !company || !jobDescription) {
       return NextResponse.json(
-        {
-          ok: false,
-          error: 'jobTitle, company, and jobDescription are required'
-        },
+        { ok: false, error: 'Missing required fields' },
         { status: 400 }
       );
     }
 
-    const openaiResponse = await fetch('https://api.openai.com/v1/chat/completions', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        Authorization: `Bearer ${process.env.OPENAI_API_KEY}`
-      },
-      body: JSON.stringify({
-        model: process.env.OPENAI_MODEL || 'gpt-4o-mini',
-        response_format: { type: 'json_object' },
-        messages: [
-          {
-            role: 'system',
-            content:
-              'You are an expert job application strategist. Return strict JSON only. Never invent experience. Tailor honestly, strongly, and clearly for ATS-friendly screening.'
-          },
-          {
-            role: 'user',
-            content: `
-Analyze this job and return JSON in exactly this shape:
+    const prompt = `
+You are an elite sales recruitment strategist.
+
+Your job is to position the candidate as a TOP 0.01% performer.
+
+STRICT RULES:
+- No generic phrasing
+- No fluff
+- No “I am excited”
+- No weak verbs (helped, assisted, worked on)
+- Every sentence must imply PERFORMANCE, CONTROL, or IMPACT
+- Never invent fake experience
+- Reframe truth into high-performance positioning
+
+OUTPUT MUST BE VALID JSON ONLY.
+
+--------------------------------------
+
+JOB:
+${jobTitle} at ${company}
+
+DESCRIPTION:
+${jobDescription}
+
+--------------------------------------
+
+CANDIDATE PROFILE:
+- Remote Sales Manager / Sales Leader
+- Outbound sales leadership
+- KPI driven (SPH, conversion, revenue)
+- Coaching teams to hit targets
+- Contact centre + sales ops
+- Recruitment, onboarding, training
+- Performance improvement systems
+- Strong control of sales process
+
+--------------------------------------
+
+RETURN JSON:
 
 {
   "keywords": [],
@@ -55,81 +72,103 @@ Analyze this job and return JSON in exactly this shape:
   "fitScore": 0
 }
 
-Candidate context:
-- Name: Ben Lynch
-- Target roles: Sales Manager, Sales Operations Manager, Sales Team Leader, Contact Center Manager, Remote Sales Manager
-- Locations: Australia, New Zealand
-- Remote only: Yes
-- Minimum salary: $70k
-- Excluded industries: Finance, Investments, Real Estate, Car Sales
-- Background highlights:
-  - Remote sales leadership
-  - Team coaching and performance improvement
-  - KPI tracking including conversion rates, revenue growth, and sales per hour
-  - Contact center and sales operations thinking
-  - Recruitment, onboarding, and training support
-  - Business development and regional sales management
-  - Strong stakeholder management and process improvement
+--------------------------------------
 
-Important rules:
-- Do not invent tools, achievements, or experience
-- Reframe honestly using only the candidate's real background
-- Keep bullets sharp and credible
-- Keep the cover letter concise and human
+INSTRUCTIONS:
 
-Job title:
-${jobTitle}
+1. KEYWORDS
+Extract high-value ATS keywords from the job
 
-Company:
-${company}
+2. STRENGTHS
+Only include REAL strengths from candidate profile
+Frame them like advantages, not traits
 
-Job description:
-${jobDescription}
+3. GAPS
+Be honest but controlled
+Do NOT make the candidate look weak
 
-Instructions:
-1. Extract the most important keywords and phrases from the job description
-2. List the candidate's strongest matching strengths
-3. List any meaningful gaps without inventing experience
-4. Write a tailored professional summary for the CV
-5. Write a tailored skills list
-6. Write 8 tailored experience bullets aligned to the role
-7. Create a clear resume version name using company and role
-8. Create a resume snapshot that combines the tailored summary, skills, and experience bullets into a clean plain-text resume section
-9. Write a sharp, specific cover letter for this exact role
-10. Give a realistic fit score from 0 to 100
+4. SUMMARY
+Write like a high-performance operator
+Tone: confident, commercial, decisive
 
-Return valid JSON only.
-`
-          }
+5. SKILLS
+Must be ATS-friendly AND commercially relevant
+
+6. EXPERIENCE BULLETS (VERY IMPORTANT)
+Write 8 bullets that:
+- Show leadership
+- Show revenue impact
+- Show control over KPIs
+- Sound like a top performer
+- Avoid generic phrasing completely
+
+Bad:
+"Led a team"
+
+Good:
+"Built and drove performance across a remote outbound sales team, enforcing KPI discipline and consistently improving conversion rates"
+
+7. RESUME SNAPSHOT
+Combine:
+- Summary
+- Skills
+- Bullets
+Into a clean, interview-ready CV section
+
+8. COVER LETTER (CRITICAL)
+- Direct
+- No fluff
+- No begging tone
+- Show VALUE quickly
+- Make them want to interview
+
+Bad:
+"I am excited to apply..."
+
+Good:
+"I lead outbound sales teams to hit aggressive revenue targets through tight KPI control and high-performance coaching..."
+
+9. FIT SCORE
+Be realistic (0–100)
+
+--------------------------------------
+
+RETURN ONLY JSON
+`;
+
+    const aiRes = await fetch('https://api.openai.com/v1/chat/completions', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${process.env.OPENAI_API_KEY}`
+      },
+      body: JSON.stringify({
+        model: process.env.OPENAI_MODEL || 'gpt-4o-mini',
+        response_format: { type: 'json_object' },
+        messages: [
+          { role: 'system', content: 'Return strict JSON only.' },
+          { role: 'user', content: prompt }
         ],
-        temperature: 0.3
+        temperature: 0.2
       })
     });
 
-    const openaiText = await openaiResponse.text();
-    const openaiJson = tryParseJson(openaiText);
+    const text = await aiRes.text();
+    const json = tryParseJson(text);
 
-    if (!openaiResponse.ok || !openaiJson) {
+    if (!aiRes.ok || !json) {
       return NextResponse.json(
-        {
-          ok: false,
-          error: 'OpenAI request failed',
-          details: openaiJson || openaiText
-        },
+        { ok: false, error: 'AI failed', details: text },
         { status: 500 }
       );
     }
 
-    const content = openaiJson.choices?.[0]?.message?.content || '';
+    const content = json.choices?.[0]?.message?.content;
     const parsed = typeof content === 'string' ? tryParseJson(content) : content;
 
     if (!parsed) {
       return NextResponse.json(
-        {
-          ok: false,
-          error: 'Model did not return valid JSON',
-          raw: content
-        },
+        { ok: false, error: 'Invalid AI JSON', raw: content },
         { status: 500 }
       );
     }
@@ -137,7 +176,7 @@ Return valid JSON only.
     const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
     const supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
 
-    const saveResponse = await fetch(`${supabaseUrl}/rest/v1/job_analyses`, {
+    const saveRes = await fetch(`${supabaseUrl}/rest/v1/job_analyses`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -147,7 +186,7 @@ Return valid JSON only.
       },
       body: JSON.stringify({
         job_title: jobTitle,
-        company: company,
+        company,
         job_description: jobDescription,
         keywords: parsed.keywords,
         strengths: parsed.strengths,
@@ -163,31 +202,18 @@ Return valid JSON only.
       })
     });
 
-    const saveText = await saveResponse.text();
-    const savedAnalysis = tryParseJson(saveText);
-
-    if (!saveResponse.ok) {
-      return NextResponse.json(
-        {
-          ok: false,
-          error: 'Failed to save to Supabase',
-          details: savedAnalysis || saveText
-        },
-        { status: 500 }
-      );
-    }
+    const saveText = await saveRes.text();
+    const saved = tryParseJson(saveText);
 
     return NextResponse.json({
       ok: true,
-      modelOutput: parsed,
-      savedId: savedAnalysis?.[0]?.id || null
+      data: parsed,
+      savedId: saved?.[0]?.id || null
     });
+
   } catch (err) {
     return NextResponse.json(
-      {
-        ok: false,
-        error: err.message || 'Unknown server error'
-      },
+      { ok: false, error: err.message },
       { status: 500 }
     );
   }
