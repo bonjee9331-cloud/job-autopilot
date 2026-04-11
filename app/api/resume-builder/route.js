@@ -8,6 +8,15 @@ function tryParseJson(text) {
   }
 }
 
+function cleanJsonText(text) {
+  return String(text || "")
+    .trim()
+    .replace(/^```json\s*/i, "")
+    .replace(/^```\s*/i, "")
+    .replace(/\s*```$/i, "")
+    .trim();
+}
+
 async function runOpenAI(prompt) {
   const response = await fetch("https://api.openai.com/v1/chat/completions", {
     method: "POST",
@@ -36,7 +45,7 @@ async function runOpenAI(prompt) {
   }
 
   const content = data?.choices?.[0]?.message?.content || "";
-  const parsed = typeof content === "string" ? tryParseJson(content) : content;
+  const parsed = typeof content === "string" ? tryParseJson(cleanJsonText(content)) : content;
 
   if (!parsed) {
     throw new Error("OpenAI returned invalid JSON");
@@ -59,7 +68,7 @@ async function runAnthropic(prompt) {
       "Content-Type": "application/json",
     },
     body: JSON.stringify({
-      model: process.env.ANTHROPIC_MODEL || "claude-3-5-sonnet-20241022",
+      model: process.env.ANTHROPIC_MODEL || "claude-sonnet-4-5-20250929",
       max_tokens: 2500,
       temperature: 0.3,
       messages: [
@@ -79,7 +88,8 @@ async function runAnthropic(prompt) {
   }
 
   const content = data?.content?.[0]?.text || "";
-  const parsed = tryParseJson(content);
+  const cleaned = cleanJsonText(content);
+  const parsed = tryParseJson(cleaned);
 
   if (!parsed) {
     throw new Error(`Anthropic returned invalid JSON: ${content}`);
