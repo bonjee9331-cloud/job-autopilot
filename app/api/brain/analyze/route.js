@@ -1,108 +1,153 @@
-import { runBrain } from '../../../../lib/llm';
-import { candidateProfile } from '../../../../lib/data';
-import { createClient } from '@supabase/supabase-js';
+import { NextResponse } from 'next/server';
 
-const supabase = createClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL,
-  process.env.SUPABASE_SERVICE_ROLE_KEY
-);
-export async function POST(request) {
+export async function POST(req) {
   try {
-    const body = await request.json();
-    const jobTitle = body.jobTitle || '';
-    const company = body.company || '';
-    const jobDescription = body.jobDescription || '';
+    const { jobTitle, company, jobDescription } = await req.json();
 
-    if (!jobTitle || !company || !jobDescription) {
-      return Response.json(
-        {
-          ok: false,
-          error: 'jobTitle, company, and jobDescription are required'
-        },
+    if (!jobDescription) {
+      return NextResponse.json(
+        { ok: false, error: 'Missing job description' },
         { status: 400 }
       );
     }
 
-    const prompt = `
-You are helping tailor a job application for this candidate.
-
-Candidate profile:
-${JSON.stringify(candidateProfile, null, 2)}
-
-Target company:
-${company}
-
-Target role:
-${jobTitle}
-
-Job description:
-${jobDescription}
-
-Your job:
-1. Extract the most important keywords and phrases from the job description
-2. Identify the candidate strengths most relevant to this role
-3. Identify any gaps, but do not invent experience
-4. Rewrite a short tailored professional summary for the CV
-5. Write a sharp, specific cover letter for this role
-6. Give a fit score from 0 to 100
-
-Return your answer in this exact JSON shape:
+    // ---------- PRIMARY LLM (OpenAI) ----------
+    const primaryRes = await fetch('https://api.openai.com/v1/chat/completions', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${process.env.OPENAI_API_KEY}`
+      },
+      body: JSON.stringify({
+        model: process.env.OPENAI_MODEL || 'gpt-4o-mini',
+        messages: [
+          {
+            role: 'system',
+            content:
+              'You are an elite job application strategist. Extract structured insights and return STRICT JSON only.'
+          },
+          {
+            role: 'user',
+            content: `
+Analyze this job description and return JSON:
 
 {
-  "keywords": ["keyword 1", "keyword 2"],
-  "strengths": ["strength 1", "strength 2"],
-  "gaps": ["gap 1", "gap 2"],
-  "tailoredSummary": "short CV summary here",
-  "coverLetter": "full cover letter here",
-  "fitScore": 85
+  "keywords": [],
+  "strengths": [],
+  "gaps": [],
+  "tailoredSummary": "",
+  "coverLetter": "",
+  "fitScore": 0
 }
 
-Return valid JSON only.
-`;
+Job:
+${jobDescription}
+`
+          }
+        ],
+        temperature: 0.7
+      })
+    });
 
-    const result = await runBrain(prompt);
+    const primaryData = await primaryRes.json();
+    const primaryText = primaryData.choices?.[0]?.message?.content || '';
+
+    // ---------- SECONDARY LLM (Anthropic) ----------
+    let secondaryText = '';
+
+    if (process.env.ANTHROPIC_API_KEY) {
+      const secondaryRes = await fetch('https://api.anthropic.com/v1/messages', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'x-api-key': process.env.ANTHROPIC_API_KEY,
+          'anthropic-version': '2023-06-01'
+        },
+        body: JSON.stringify({
+          model: process.env.ANTHROPIC_MODEL || 'claude-3-sonnet-20240229',
+          max_tokens: 1000,
+          messages: [
+            {
+              role: 'user',
+              content: `
+Refine this output and ensure it is valid JSON only:
+
+${primaryText}
+`
+            }
+          ]
+        })
+      });
+
+      const secondaryData = await secondaryRes.json();
+      secondaryText = secondaryData?.content?.[0]?.text || '';
+    }
+
+    // ---------- FINAL OUTPUT ----------
+    const finalText = secondaryText || primaryText;
 
     let parsed;
     try {
-      parsed = JSON.parse(result.final);
-    } catch (error) {
-      return Response.json(
+      parsed = JSON.parse(finalText);
+    } catch (err) {
+      return NextResponse.json(
         {
           ok: false,
           error: 'Model did not return valid JSON',
-          raw: result.final
+          raw: finalText
         },
         { status: 500 }
       );
     }
-await supabase.from('job_analyses').insert([
-  {
-    job_title: jobTitle,
-    company: company,
-    job_description: jobDescription,
-    keywords: parsed.keywords,
-    strengths: parsed.strengths,
-    gaps: parsed.gaps,
-    tailored_summary: parsed.tailoredSummary,
-    cover_letter: parsed.coverLetter,
-    fit_score: parsed.fitScore
-  }
-]);
-    return Response.json({
+
+    // ---------- SUPABASE SAVE ----------
+    const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
+    const supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
+
+    const saveRes = await fetch(`${supabaseUrl}/rest/v1/job_analyses`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        apikey: supabaseKey,
+        Authorization: `Bearer ${supabaseKey}`,
+        Prefer: 'return=representation'
+      },
+      body: JSON.stringify({
+        job_title: jobTitle,
+        company: company,
+        job_description: jobDescription,
+        keywords: parsed.keywords,
+        strengths: parsed.strengths,
+        gaps: parsed.gaps,
+        tailored_summary: parsed.tailoredSummary,
+        cover_letter: parsed.coverLetter,
+        fit_score: parsed.fitScore
+      })
+    });
+
+    const savedAnalysis = await saveRes.json();
+
+    if (!saveRes.ok) {
+      return NextResponse.json(
+        {
+          ok: false,
+          error: 'Failed to save to Supabase',
+          details: savedAnalysis
+        },
+        { status: 500 }
+      );
+    }
+
+    // ---------- SUCCESS ----------
+    return NextResponse.json({
       ok: true,
       modelOutput: parsed,
-      drafts: {
-        primary: result.primary,
-        secondary: result.secondary,
-        final: result.final
-      }
+      savedAnalysis
     });
-  } catch (error) {
-    return Response.json(
-      {
-        ok: false,
-        error: error.message || 'Unknown error'
-      },
+
+  } catch (err) {
+    return NextResponse.json(
+      { ok: false, error: err.message },
       { status: 500 }
     );
   }
