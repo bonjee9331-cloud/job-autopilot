@@ -4,6 +4,7 @@ import {
   fetchAdzunaJobs,
   fetchGreenhouseJobs,
   fetchHimalayasJobs,
+  fetchJoobleJobs,
   fetchMuseJobs,
   fetchRemotiveJobs
 } from '../../../../lib/job-sources';
@@ -47,7 +48,7 @@ export async function POST(req) {
     const remoteOnly = parseBool(body.remoteOnly ?? true);
 
     const enabledSources = String(
-      process.env.JOB_SEARCH_SOURCES || 'adzuna,muse,remotive,himalayas,greenhouse'
+      process.env.JOB_SEARCH_SOURCES || 'adzuna,muse,remotive,himalayas,greenhouse,jooble'
     )
       .split(',')
       .map((x) => x.trim().toLowerCase())
@@ -58,7 +59,8 @@ export async function POST(req) {
       muse: [],
       remotive: [],
       himalayas: [],
-      greenhouse: []
+      greenhouse: [],
+      jooble: []
     };
 
     if (enabledSources.includes('adzuna')) {
@@ -107,12 +109,24 @@ export async function POST(req) {
       });
     }
 
+    if (enabledSources.includes('jooble')) {
+      sourceResults.jooble = await fetchJoobleJobs({
+        query,
+        location,
+        minSalary,
+        targetTitles,
+        preferredLocations,
+        excludedKeywords
+      });
+    }
+
     const allJobs = [
       ...sourceResults.adzuna,
       ...sourceResults.muse,
       ...sourceResults.remotive,
       ...sourceResults.himalayas,
-      ...sourceResults.greenhouse
+      ...sourceResults.greenhouse,
+      ...sourceResults.jooble
     ];
 
     const dedupedJobs = dedupeJobs(allJobs, targetTitles, excludedKeywords);
@@ -125,7 +139,12 @@ export async function POST(req) {
       return false;
     });
 
-    const jobs = salaryFilteredJobs.slice(0, 50);
+    const remoteFilteredJobs = salaryFilteredJobs.filter((job) => {
+      if (!remoteOnly) return true;
+      return !!job.remote;
+    });
+
+    const jobs = remoteFilteredJobs.slice(0, 80);
 
     const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
     const supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
@@ -162,11 +181,13 @@ export async function POST(req) {
           remotive: sourceResults.remotive.length,
           himalayas: sourceResults.himalayas.length,
           greenhouse: sourceResults.greenhouse.length,
+          jooble: sourceResults.jooble.length,
           total: allJobs.length
         },
         countsAfterFiltering: {
           deduped: dedupedJobs.length,
           salaryFiltered: salaryFilteredJobs.length,
+          remoteFiltered: remoteFilteredJobs.length,
           final: jobs.length
         }
       }
