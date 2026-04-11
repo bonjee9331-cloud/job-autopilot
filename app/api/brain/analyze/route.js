@@ -1,6 +1,11 @@
 import { runBrain } from '../../../../lib/llm';
 import { candidateProfile } from '../../../../lib/data';
+import { createClient } from '@supabase/supabase-js';
 
+const supabase = createClient(
+  process.env.NEXT_PUBLIC_SUPABASE_URL,
+  process.env.SUPABASE_SERVICE_ROLE_KEY
+);
 export async function POST(request) {
   try {
     const body = await request.json();
@@ -70,7 +75,19 @@ Return valid JSON only.
         { status: 500 }
       );
     }
-
+await supabase.from('job_analyses').insert([
+  {
+    job_title: jobTitle,
+    company: company,
+    job_description: jobDescription,
+    keywords: parsed.keywords,
+    strengths: parsed.strengths,
+    gaps: parsed.gaps,
+    tailored_summary: parsed.tailoredSummary,
+    cover_letter: parsed.coverLetter,
+    fit_score: parsed.fitScore
+  }
+]);
     return Response.json({
       ok: true,
       modelOutput: parsed,
