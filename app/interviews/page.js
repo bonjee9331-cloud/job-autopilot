@@ -3,8 +3,8 @@
 import { useEffect, useState } from "react";
 
 export default function InterviewPrepPage() {
-  const [packages, setPackages] = useState<any[]>([]);
-  const [prep, setPrep] = useState<any>(null);
+  const [packages, setPackages] = useState([]);
+  const [prep, setPrep] = useState(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
 
@@ -15,14 +15,27 @@ export default function InterviewPrepPage() {
   async function loadPackages() {
     try {
       const res = await fetch("/api/packages");
-      const data = await res.json();
-      setPackages(data.data || []);
-    } catch {
-      setError("Failed to load packages");
+      const text = await res.text();
+
+      let data;
+      try {
+        data = JSON.parse(text);
+      } catch {
+        throw new Error("Invalid JSON returned while loading packages");
+      }
+
+      if (!res.ok || !data.ok) {
+        throw new Error(data.error || "Failed to load packages");
+      }
+
+      setPackages(data.packages || []);
+    } catch (err) {
+      console.error(err);
+      setError(err.message || "Failed to load packages");
     }
   }
 
-  async function generatePrep(pkg: any) {
+  async function generatePrep(pkg) {
     setLoading(true);
     setError("");
     setPrep(null);
@@ -30,30 +43,39 @@ export default function InterviewPrepPage() {
     try {
       const res = await fetch("/api/interview-prep", {
         method: "POST",
-        body: JSON.stringify(pkg),
+        headers: {
+          "Content-Type": "application/json"
+        },
+        body: JSON.stringify({
+          job_title: pkg.job_title,
+          company: pkg.company,
+          job_description: pkg.job_description,
+          tailoredSummary: pkg.tailored_summary,
+          tailoredExperienceBullets: pkg.tailored_experience_bullets || [],
+          tailoredSkills: pkg.tailored_skills || []
+        })
       });
 
       const text = await res.text();
 
-      // 🔥 SAFE JSON PARSE (this prevents your crash)
       let parsed;
       try {
         parsed = JSON.parse(text);
       } catch {
-        throw new Error("Invalid JSON returned from API");
+        throw new Error("Invalid JSON returned from interview prep API");
       }
 
       if (!parsed.ok) {
-        throw new Error(parsed.error || "Failed");
+        throw new Error(parsed.error || "Interview prep failed");
       }
 
       setPrep(parsed.data);
-    } catch (err: any) {
+    } catch (err) {
       console.error(err);
-      setError(err.message);
+      setError(err.message || "Interview prep failed");
+    } finally {
+      setLoading(false);
     }
-
-    setLoading(false);
   }
 
   return (
@@ -61,8 +83,6 @@ export default function InterviewPrepPage() {
       <h1 className="text-2xl font-bold mb-4">Interview Prep Engine</h1>
 
       <div className="grid grid-cols-3 gap-6">
-
-        {/* LEFT */}
         <div className="space-y-2">
           {packages.map((pkg) => (
             <div
@@ -76,9 +96,7 @@ export default function InterviewPrepPage() {
           ))}
         </div>
 
-        {/* RIGHT */}
         <div className="col-span-2 space-y-4">
-
           {loading && <div>Generating interview prep...</div>}
 
           {error && (
@@ -89,40 +107,35 @@ export default function InterviewPrepPage() {
 
           {prep && (
             <>
-              {/* PITCH */}
               <div className="border p-4 rounded">
                 <h2 className="font-bold mb-2">🔥 60s Pitch</h2>
                 <p>{prep.pitch}</p>
               </div>
 
-              {/* QUESTIONS */}
               <div className="border p-4 rounded">
                 <h2 className="font-bold mb-2">Questions</h2>
-                {prep.questions?.map((q: string, i: number) => (
+                {(prep.questions || []).map((q, i) => (
                   <p key={i}>• {q}</p>
                 ))}
               </div>
 
-              {/* ANSWERS */}
               <div className="border p-4 rounded">
                 <h2 className="font-bold mb-2">Answers</h2>
-                {prep.answers?.map((a: string, i: number) => (
+                {(prep.answers || []).map((a, i) => (
                   <p key={i}>• {a}</p>
                 ))}
               </div>
 
-              {/* COMPANY */}
               <div className="border p-4 rounded">
                 <h2 className="font-bold mb-2">Company Angles</h2>
-                {prep.companyAngles?.map((c: string, i: number) => (
+                {(prep.companyAngles || []).map((c, i) => (
                   <p key={i}>• {c}</p>
                 ))}
               </div>
 
-              {/* RED FLAGS */}
               <div className="border p-4 rounded">
                 <h2 className="font-bold mb-2">Red Flags</h2>
-                {prep.redFlags?.map((r: string, i: number) => (
+                {(prep.redFlags || []).map((r, i) => (
                   <p key={i}>• {r}</p>
                 ))}
               </div>
