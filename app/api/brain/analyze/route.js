@@ -14,50 +14,54 @@ export async function POST(req) {
 
     if (!jobTitle || !company || !jobDescription) {
       return NextResponse.json(
-        { ok: false, error: 'Missing required fields' },
+        {
+          ok: false,
+          error: 'jobTitle, company, and jobDescription are required'
+        },
         { status: 400 }
       );
     }
 
-    const prompt = `
-You are an elite sales recruitment strategist.
+    const openaiResponse = await fetch('https://api.openai.com/v1/chat/completions', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${process.env.OPENAI_API_KEY}`
+      },
+      body: JSON.stringify({
+        model: process.env.OPENAI_MODEL || 'gpt-4o-mini',
+        response_format: { type: 'json_object' },
+        messages: [
+          {
+            role: 'system',
+            content: `
+You are an elite-level job application strategist.
 
-Your job is to position the candidate as a TOP 0.01% performer.
+Your job is to produce high-performance, recruiter-ready application content that:
+- ranks in the top 0.01% of candidates
+- passes ATS systems
+- sounds fully human and credible
+- is commercially sharp and outcome-driven
 
-STRICT RULES:
-- No generic phrasing
-- No fluff
-- No “I am excited”
-- No weak verbs (helped, assisted, worked on)
-- Every sentence must imply PERFORMANCE, CONTROL, or IMPACT
-- Never invent fake experience
-- Reframe truth into high-performance positioning
+CRITICAL RULES:
+- NEVER invent fake metrics, percentages, revenue figures, or tools
+- ONLY include numbers if they are clearly supported by the candidate context or job alignment
+- If no number is available, use strong commercial language instead
+- Avoid generic phrases like "results-driven" unless backed by specifics
+- No fluff, no filler, no corporate clichés
+- Every bullet must sound like it came from a top performer, not AI
 
-OUTPUT MUST BE VALID JSON ONLY.
-
---------------------------------------
-
-JOB:
-${jobTitle} at ${company}
-
-DESCRIPTION:
-${jobDescription}
-
---------------------------------------
-
-CANDIDATE PROFILE:
-- Remote Sales Manager / Sales Leader
-- Outbound sales leadership
-- KPI driven (SPH, conversion, revenue)
-- Coaching teams to hit targets
-- Contact centre + sales ops
-- Recruitment, onboarding, training
-- Performance improvement systems
-- Strong control of sales process
-
---------------------------------------
-
-RETURN JSON:
+WRITING STYLE:
+- Direct, confident, commercially focused
+- Outcome-first language
+- Emphasize revenue, performance, conversion, leadership impact
+- Tight, sharp bullet points (no rambling)
+`
+          },
+          {
+            role: 'user',
+            content: `
+Return JSON in exactly this structure:
 
 {
   "keywords": [],
@@ -72,103 +76,115 @@ RETURN JSON:
   "fitScore": 0
 }
 
---------------------------------------
+Candidate context:
+- Name: Ben Lynch
+- Target roles: Sales Manager, Sales Operations Manager, Sales Team Leader, Contact Center Manager, Remote Sales Manager
+- Locations: Australia, New Zealand
+- Remote only: Yes
+- Minimum salary: $70k
+- Excluded industries: Finance, Investments, Real Estate, Car Sales
+
+Background:
+- Remote sales leadership
+- Team coaching and performance improvement
+- KPI tracking (conversion rates, revenue, sales per hour)
+- Contact center and outbound sales environment
+- Recruitment, onboarding, and training
+- Sales operations and process improvement
+
+Job title:
+${jobTitle}
+
+Company:
+${company}
+
+Job description:
+${jobDescription}
 
 INSTRUCTIONS:
 
-1. KEYWORDS
-Extract high-value ATS keywords from the job
+1. Extract ATS keywords (important phrases from job description)
 
-2. STRENGTHS
-Only include REAL strengths from candidate profile
-Frame them like advantages, not traits
+2. Strengths:
+- Align directly with the job
+- Make them feel commercially valuable
 
-3. GAPS
-Be honest but controlled
-Do NOT make the candidate look weak
+3. Gaps:
+- Only include real gaps if relevant
+- Keep minimal
 
-4. SUMMARY
-Write like a high-performance operator
-Tone: confident, commercial, decisive
-
-5. SKILLS
-Must be ATS-friendly AND commercially relevant
-
-6. EXPERIENCE BULLETS (VERY IMPORTANT)
-Write 8 bullets that:
-- Show leadership
-- Show revenue impact
-- Show control over KPIs
-- Sound like a top performer
-- Avoid generic phrasing completely
-
-Bad:
-"Led a team"
-
-Good:
-"Built and drove performance across a remote outbound sales team, enforcing KPI discipline and consistently improving conversion rates"
-
-7. RESUME SNAPSHOT
-Combine:
-- Summary
-- Skills
-- Bullets
-Into a clean, interview-ready CV section
-
-8. COVER LETTER (CRITICAL)
-- Direct
+4. Tailored Summary:
+- Strong opening positioning
 - No fluff
-- No begging tone
-- Show VALUE quickly
-- Make them want to interview
+- Sound like a high performer
 
-Bad:
-"I am excited to apply..."
+5. Tailored Skills:
+- Relevant, ATS-friendly, no filler
 
-Good:
-"I lead outbound sales teams to hit aggressive revenue targets through tight KPI control and high-performance coaching..."
+6. Tailored Experience Bullets:
+- 8 bullets max
+- MUST sound like real performance
+- Use metrics ONLY if believable and aligned
+- Otherwise use strong outcome language:
+  - "lifted conversion consistency"
+  - "tightened KPI discipline"
+  - "improved revenue performance"
+- Avoid fake precision like "32.7%"
 
-9. FIT SCORE
-Be realistic (0–100)
+7. Resume Version Name:
+- Clear and specific (Company + Role)
 
---------------------------------------
+8. Resume Snapshot:
+- Clean, interview-ready CV section
+- No fluff
 
-RETURN ONLY JSON
-`;
+9. Cover Letter:
+- NO "I am excited"
+- NO generic intro
+- Structure:
+  - Opening: direct value statement
+  - Middle: how you drive results
+  - Close: why you're relevant to THIS role
+- Keep it sharp and human
 
-    const aiRes = await fetch('https://api.openai.com/v1/chat/completions', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        Authorization: `Bearer ${process.env.OPENAI_API_KEY}`
-      },
-      body: JSON.stringify({
-        model: process.env.OPENAI_MODEL || 'gpt-4o-mini',
-        response_format: { type: 'json_object' },
-        messages: [
-          { role: 'system', content: 'Return strict JSON only.' },
-          { role: 'user', content: prompt }
+10. Fit Score:
+- Be realistic
+- 75–88 = strong fit
+- 88–92 = very strong fit
+- Only go above 92 if near perfect match
+
+Return JSON only.
+`
+          }
         ],
-        temperature: 0.2
+        temperature: 0.3
       })
     });
 
-    const text = await aiRes.text();
-    const json = tryParseJson(text);
+    const openaiText = await openaiResponse.text();
+    const openaiJson = tryParseJson(openaiText);
 
-    if (!aiRes.ok || !json) {
+    if (!openaiResponse.ok || !openaiJson) {
       return NextResponse.json(
-        { ok: false, error: 'AI failed', details: text },
+        {
+          ok: false,
+          error: 'OpenAI request failed',
+          details: openaiJson || openaiText
+        },
         { status: 500 }
       );
     }
 
-    const content = json.choices?.[0]?.message?.content;
+    const content = openaiJson.choices?.[0]?.message?.content || '';
     const parsed = typeof content === 'string' ? tryParseJson(content) : content;
 
     if (!parsed) {
       return NextResponse.json(
-        { ok: false, error: 'Invalid AI JSON', raw: content },
+        {
+          ok: false,
+          error: 'Model did not return valid JSON',
+          raw: content
+        },
         { status: 500 }
       );
     }
@@ -176,7 +192,7 @@ RETURN ONLY JSON
     const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
     const supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
 
-    const saveRes = await fetch(`${supabaseUrl}/rest/v1/job_analyses`, {
+    const saveResponse = await fetch(`${supabaseUrl}/rest/v1/job_analyses`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -186,7 +202,7 @@ RETURN ONLY JSON
       },
       body: JSON.stringify({
         job_title: jobTitle,
-        company,
+        company: company,
         job_description: jobDescription,
         keywords: parsed.keywords,
         strengths: parsed.strengths,
@@ -202,18 +218,31 @@ RETURN ONLY JSON
       })
     });
 
-    const saveText = await saveRes.text();
-    const saved = tryParseJson(saveText);
+    const saveText = await saveResponse.text();
+    const savedAnalysis = tryParseJson(saveText);
+
+    if (!saveResponse.ok) {
+      return NextResponse.json(
+        {
+          ok: false,
+          error: 'Failed to save to Supabase',
+          details: savedAnalysis || saveText
+        },
+        { status: 500 }
+      );
+    }
 
     return NextResponse.json({
       ok: true,
       data: parsed,
-      savedId: saved?.[0]?.id || null
+      savedId: savedAnalysis?.[0]?.id || null
     });
-
   } catch (err) {
     return NextResponse.json(
-      { ok: false, error: err.message },
+      {
+        ok: false,
+        error: err.message || 'Unknown server error'
+      },
       { status: 500 }
     );
   }
