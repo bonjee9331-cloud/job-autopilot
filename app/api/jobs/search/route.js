@@ -8,14 +8,6 @@ import {
   fetchRemotiveJobs
 } from '../../../../lib/job-sources';
 
-function tryParseJson(text) {
-  try {
-    return JSON.parse(text);
-  } catch {
-    return null;
-  }
-}
-
 function parseBool(value) {
   return String(value || '').toLowerCase() === 'true';
 }
@@ -49,10 +41,7 @@ export async function POST(req) {
       'automotive sales'
     ];
 
-    const query =
-      body.query ||
-      targetTitles.join(' OR ');
-
+    const query = body.query || targetTitles.join(' OR ');
     const location = body.location || '';
     const minSalary = Number(body.minSalary || 70000);
     const remoteOnly = parseBool(body.remoteOnly ?? true);
@@ -64,82 +53,87 @@ export async function POST(req) {
       .map((x) => x.trim().toLowerCase())
       .filter(Boolean);
 
-    const tasks = [];
+    const sourceResults = {
+      adzuna: [],
+      muse: [],
+      remotive: [],
+      himalayas: [],
+      greenhouse: []
+    };
 
     if (enabledSources.includes('adzuna')) {
-      tasks.push(
-        fetchAdzunaJobs({
-          query,
-          location,
-          minSalary,
-          remoteOnly,
-          targetTitles,
-          preferredLocations,
-          excludedKeywords
-        })
-      );
+      sourceResults.adzuna = await fetchAdzunaJobs({
+        query,
+        location,
+        minSalary,
+        remoteOnly,
+        targetTitles,
+        preferredLocations,
+        excludedKeywords
+      });
     }
 
     if (enabledSources.includes('muse')) {
-      tasks.push(
-        fetchMuseJobs({
-          targetTitles,
-          preferredLocations,
-          excludedKeywords
-        })
-      );
+      sourceResults.muse = await fetchMuseJobs({
+        targetTitles,
+        preferredLocations,
+        excludedKeywords
+      });
     }
 
     if (enabledSources.includes('remotive')) {
-      tasks.push(
-        fetchRemotiveJobs({
-          query,
-          targetTitles,
-          preferredLocations,
-          excludedKeywords
-        })
-      );
+      sourceResults.remotive = await fetchRemotiveJobs({
+        query,
+        targetTitles,
+        preferredLocations,
+        excludedKeywords
+      });
     }
 
     if (enabledSources.includes('himalayas')) {
-      tasks.push(
-        fetchHimalayasJobs({
-          query,
-          targetTitles,
-          preferredLocations,
-          excludedKeywords
-        })
-      );
+      sourceResults.himalayas = await fetchHimalayasJobs({
+        query,
+        targetTitles,
+        preferredLocations,
+        excludedKeywords
+      });
     }
 
     if (enabledSources.includes('greenhouse')) {
-      tasks.push(
-        fetchGreenhouseJobs({
-          targetTitles,
-          preferredLocations,
-          excludedKeywords
-        })
-      );
+      sourceResults.greenhouse = await fetchGreenhouseJobs({
+        targetTitles,
+        preferredLocations,
+        excludedKeywords
+      });
     }
 
-    const results = await Promise.all(tasks);
-    const jobs = dedupeJobs(results.flat()).filter((job) => {
-      if (minSalary && job.salary_min && job.salary_min < minSalary && !job.salary_max) {
-        return false;
-      }
-      if (minSalary && job.salary_max && job.salary_max < minSalary) {
-        return false;
-      }
-      return true;
+    const allJobs = [
+      ...sourceResults.adzuna,
+      ...sourceResults.muse,
+      ...sourceResults.remotive,
+      ...sourceResults.himalayas,
+      ...sourceResults.greenhouse
+    ];
+
+    const dedupedJobs = dedupeJobs(allJobs, targetTitles, excludedKeywords);
+
+    const salaryFilteredJobs = dedupedJobs.filter((job) => {
+      if (!minSalary) return true;
+      if (job.salary_min && job.salary_min >= minSalary) return true;
+      if (job.salary_max && job.salary_max >= minSalary) return true;
+      if (!job.salary_min && !job.salary_max) return true;
+      return false;
     });
+
+    const jobs = salaryFilteredJobs.slice(0, 50);
 
     const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
     const supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
 
     if (supabaseUrl && supabaseKey && jobs.length) {
       await Promise.all(
-        jobs.slice(0, 100).map(async (job) => {
-          const response = await fetch(
+        jobs.map(async (job) => {
+          await fetch(
             `${supabaseUrl}/rest/v1/jobs?on_conflict=source,external_id`,
             {
               method: 'POST',
@@ -152,11 +146,6 @@ export async function POST(req) {
               body: JSON.stringify(job)
             }
           );
-
-          if (!response.ok) {
-            const text = await response.text();
-            console.error('Failed to save job', job.source, job.external_id, tryParseJson(text) || text);
-          }
         })
       );
     }
@@ -164,7 +153,23 @@ export async function POST(req) {
     return NextResponse.json({
       ok: true,
       count: jobs.length,
-      jobs
+      jobs,
+      debug: {
+        enabledSources,
+        countsBeforeDedupe: {
+          adzuna: sourceResults.adzuna.length,
+          muse: sourceResults.muse.length,
+          remotive: sourceResults.remotive.length,
+          himalayas: sourceResults.himalayas.length,
+          greenhouse: sourceResults.greenhouse.length,
+          total: allJobs.length
+        },
+        countsAfterFiltering: {
+          deduped: dedupedJobs.length,
+          salaryFiltered: salaryFilteredJobs.length,
+          final: jobs.length
+        }
+      }
     });
   } catch (err) {
     return NextResponse.json(
