@@ -9,6 +9,7 @@ export default function ResumeBuilderPage() {
   const [loadingPackages, setLoadingPackages] = useState(true);
   const [loadingResume, setLoadingResume] = useState(false);
   const [error, setError] = useState("");
+  const [warning, setWarning] = useState("");
   const [copyMessage, setCopyMessage] = useState("");
 
   useEffect(() => {
@@ -48,6 +49,7 @@ export default function ResumeBuilderPage() {
     setResume(null);
     setLoadingResume(true);
     setError("");
+    setWarning("");
     setCopyMessage("");
 
     try {
@@ -73,6 +75,7 @@ export default function ResumeBuilderPage() {
       }
 
       setResume(data.data);
+      setWarning(data.warning || "");
     } catch (err) {
       console.error(err);
       setError(err.message || "Resume builder failed");
@@ -96,7 +99,9 @@ export default function ResumeBuilderPage() {
     <main className="stack">
       <section className="hero">
         <h1>Resume Builder</h1>
-        <p>Use OpenAI and Anthropic together to turn saved packages into sharper, cleaner, premium resumes.</p>
+        <p>
+          Use OpenAI and Anthropic together to turn saved packages into sharper, cleaner, premium resumes.
+        </p>
       </section>
 
       {copyMessage ? (
@@ -109,6 +114,13 @@ export default function ResumeBuilderPage() {
         <section className="card">
           <h2>Error</h2>
           <p>{error}</p>
+        </section>
+      ) : null}
+
+      {warning ? (
+        <section className="card">
+          <h2>Warning</h2>
+          <p>{warning}</p>
         </section>
       ) : null}
 
