@@ -30,6 +30,7 @@ export async function POST(req) {
       },
       body: JSON.stringify({
         model: process.env.OPENAI_MODEL || 'gpt-4o-mini',
+        response_format: { type: 'json_object' },
         messages: [
           {
             role: 'system',
@@ -64,14 +65,17 @@ Candidate context:
 - Background highlights:
   - Remote sales leadership
   - Team coaching and performance improvement
-  - KPI tracking including conversion, revenue, and sales per hour
+  - KPI tracking including conversion rates, revenue growth, and sales per hour
   - Contact center and sales operations thinking
   - Recruitment, onboarding, and training support
   - Business development and regional sales management
   - Strong stakeholder management and process improvement
-- Important rule:
-  - Do not invent tools, achievements, or experience
-  - Reframe honestly using only the candidate's real background
+
+Important rules:
+- Do not invent tools, achievements, or experience
+- Reframe honestly using only the candidate's real background
+- Keep bullets sharp and credible
+- Keep the cover letter concise and human
 
 Job title:
 ${jobTitle}
@@ -88,7 +92,7 @@ Instructions:
 3. List any meaningful gaps without inventing experience
 4. Write a tailored professional summary for the CV
 5. Write a tailored skills list
-6. Write 8 to 12 tailored experience bullets aligned to the role
+6. Write 8 tailored experience bullets aligned to the role
 7. Create a clear resume version name using company and role
 8. Create a resume snapshot that combines the tailored summary, skills, and experience bullets into a clean plain-text resume section
 9. Write a sharp, specific cover letter for this exact role
@@ -98,7 +102,7 @@ Return valid JSON only.
 `
           }
         ],
-        temperature: 0.4
+        temperature: 0.3
       })
     });
 
@@ -116,70 +120,15 @@ Return valid JSON only.
       );
     }
 
-    const primaryText = openaiJson.choices?.[0]?.message?.content || '';
-
-    let finalText = primaryText;
-
-    if (process.env.ANTHROPIC_API_KEY) {
-      const anthropicResponse = await fetch('https://api.anthropic.com/v1/messages', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'x-api-key': process.env.ANTHROPIC_API_KEY,
-          'anthropic-version': '2023-06-01'
-        },
-        body: JSON.stringify({
-          model: process.env.ANTHROPIC_MODEL || 'claude-sonnet-4-6',
-          max_tokens: 2000,
-          messages: [
-            {
-              role: 'user',
-              content: `
-You are reviewing a JSON response for a job application workflow.
-
-IMPORTANT:
-- You MUST return valid JSON
-- Do NOT add explanations
-- Do NOT add text outside JSON
-- Do NOT change the structure
-- Do NOT invent experience
-- Improve clarity, strength, credibility, and natural language
-
-Here is the JSON to improve:
-${primaryText}
-
-Return ONLY valid JSON.
-`
-            }
-          ]
-        })
-      });
-
-      const anthropicText = await anthropicResponse.text();
-      const anthropicJson = tryParseJson(anthropicText);
-
-      if (!anthropicResponse.ok || !anthropicJson) {
-        return NextResponse.json(
-          {
-            ok: false,
-            error: 'Anthropic request failed',
-            details: anthropicJson || anthropicText
-          },
-          { status: 500 }
-        );
-      }
-
-      finalText = anthropicJson?.content?.[0]?.text || primaryText;
-    }
-
-    const parsed = tryParseJson(finalText);
+    const content = openaiJson.choices?.[0]?.message?.content || '';
+    const parsed = typeof content === 'string' ? tryParseJson(content) : content;
 
     if (!parsed) {
       return NextResponse.json(
         {
           ok: false,
           error: 'Model did not return valid JSON',
-          raw: finalText
+          raw: content
         },
         { status: 500 }
       );
@@ -231,7 +180,7 @@ Return ONLY valid JSON.
     return NextResponse.json({
       ok: true,
       modelOutput: parsed,
-      savedAnalysis
+      savedId: savedAnalysis?.[0]?.id || null
     });
   } catch (err) {
     return NextResponse.json(
