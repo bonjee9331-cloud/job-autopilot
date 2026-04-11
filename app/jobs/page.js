@@ -23,7 +23,10 @@ const defaultExcluded = [
 ].join('\n');
 
 function stripHtml(value) {
-  return String(value || '').replace(/<[^>]*>/g, ' ').replace(/\s+/g, ' ').trim();
+  return String(value || '')
+    .replace(/<[^>]*>/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
 }
 
 export default function JobsPage() {
@@ -39,6 +42,8 @@ export default function JobsPage() {
   const [debug, setDebug] = useState(null);
   const [packageLoadingId, setPackageLoadingId] = useState('');
   const [packageMessage, setPackageMessage] = useState('');
+  const [statusMessage, setStatusMessage] = useState('');
+  const [statusLoadingId, setStatusLoadingId] = useState('');
 
   async function runSearch(event) {
     event.preventDefault();
@@ -47,6 +52,7 @@ export default function JobsPage() {
     setJobs([]);
     setDebug(null);
     setPackageMessage('');
+    setStatusMessage('');
 
     try {
       const response = await fetch('/api/jobs/search', {
@@ -87,6 +93,7 @@ export default function JobsPage() {
   async function generatePackage(job) {
     setPackageLoadingId(`${job.source}-${job.external_id}`);
     setPackageMessage('');
+    setStatusMessage('');
     setError('');
 
     try {
@@ -121,11 +128,55 @@ export default function JobsPage() {
     }
   }
 
+  async function updateStatus(job, status) {
+    const loadingId = `${job.source}-${job.external_id}-${status}`;
+    setStatusLoadingId(loadingId);
+    setError('');
+    setPackageMessage('');
+    setStatusMessage('');
+
+    try {
+      const response = await fetch('/api/pipeline/update', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ id: job.id, status })
+      });
+
+      const text = await response.text();
+
+      let data;
+      try {
+        data = JSON.parse(text);
+      } catch {
+        throw new Error('Server returned non-JSON response');
+      }
+
+      if (!response.ok || !data.ok) {
+        throw new Error(data.error || 'Failed to update pipeline status');
+      }
+
+      setStatusMessage(`${job.title} updated to ${status}`);
+
+      setJobs((currentJobs) =>
+        currentJobs.map((item) =>
+          item.id === job.id ? { ...item, pipeline_status: status } : item
+        )
+      );
+    } catch (err) {
+      setError(err.message || 'Something went wrong');
+    } finally {
+      setStatusLoadingId('');
+    }
+  }
+
   return (
     <main className="stack">
       <section className="hero">
         <h1>Multi-Source Job Search</h1>
-        <p>Search across multiple sources, filter aggressively, and generate tailored application packages directly from live jobs.</p>
+        <p>
+          Search across multiple sources, filter aggressively, and generate tailored
+          application packages directly from live jobs.
+        </p>
       </section>
 
       <section className="card">
@@ -199,6 +250,12 @@ export default function JobsPage() {
         </section>
       ) : null}
 
+      {statusMessage ? (
+        <section className="card">
+          <p>{statusMessage}</p>
+        </section>
+      ) : null}
+
       {error ? (
         <section className="card">
           <h2>Error</h2>
@@ -209,12 +266,24 @@ export default function JobsPage() {
       {debug ? (
         <section className="card">
           <h2>Debug</h2>
-          <p><strong>Enabled sources:</strong> {(debug.enabledSources || []).join(', ')}</p>
-          <p><strong>Before dedupe:</strong></p>
+          <p>
+            <strong>Enabled sources:</strong> {(debug.enabledSources || []).join(', ')}
+          </p>
+          <p>
+            <strong>Query clusters:</strong>
+          </p>
+          <pre style={{ whiteSpace: 'pre-wrap' }}>
+            {JSON.stringify(debug.queryClusters || [], null, 2)}
+          </pre>
+          <p>
+            <strong>Before dedupe:</strong>
+          </p>
           <pre style={{ whiteSpace: 'pre-wrap' }}>
             {JSON.stringify(debug.countsBeforeDedupe || {}, null, 2)}
           </pre>
-          <p><strong>After filtering:</strong></p>
+          <p>
+            <strong>After filtering:</strong>
+          </p>
           <pre style={{ whiteSpace: 'pre-wrap' }}>
             {JSON.stringify(debug.countsAfterFiltering || {}, null, 2)}
           </pre>
@@ -228,13 +297,20 @@ export default function JobsPage() {
         ) : (
           <div style={{ display: 'grid', gap: '12px' }}>
             {jobs.map((job) => {
-              const loadingId = `${job.source}-${job.external_id}`;
-              const isGenerating = packageLoadingId === loadingId;
+              const packageId = `${job.source}-${job.external_id}`;
+              const isGenerating = packageLoadingId === packageId;
+              const shortlistLoading = statusLoadingId === `${job.source}-${job.external_id}-shortlisted`;
+              const saveLoading = statusLoadingId === `${job.source}-${job.external_id}-saved`;
+              const ignoreLoading = statusLoadingId === `${job.source}-${job.external_id}-ignored`;
 
               return (
                 <article
-                  key={loadingId}
-                  style={{ border: '1px solid #ddd', borderRadius: '10px', padding: '14px' }}
+                  key={packageId}
+                  style={{
+                    border: '1px solid #ddd',
+                    borderRadius: '10px',
+                    padding: '14px'
+                  }}
                 >
                   <h3>{job.title}</h3>
                   <p><strong>Company:</strong> {job.company}</p>
@@ -244,6 +320,8 @@ export default function JobsPage() {
                   <p><strong>Matched title:</strong> {job.matched_title || 'None'}</p>
                   <p><strong>Salary:</strong> {job.salary_text || 'Not listed'}</p>
                   <p><strong>Remote:</strong> {job.remote ? 'Yes' : 'No'}</p>
+                  <p><strong>Pipeline status:</strong> {job.pipeline_status || 'new'}</p>
+
                   <p style={{ whiteSpace: 'pre-wrap' }}>
                     {stripHtml(job.description).slice(0, 500)}
                     {stripHtml(job.description).length > 500 ? '...' : ''}
@@ -258,6 +336,27 @@ export default function JobsPage() {
 
                     <button onClick={() => generatePackage(job)} disabled={isGenerating}>
                       {isGenerating ? 'Generating package...' : 'Generate package'}
+                    </button>
+
+                    <button
+                      onClick={() => updateStatus(job, 'shortlisted')}
+                      disabled={shortlistLoading}
+                    >
+                      {shortlistLoading ? 'Updating...' : '⭐ Shortlist'}
+                    </button>
+
+                    <button
+                      onClick={() => updateStatus(job, 'saved')}
+                      disabled={saveLoading}
+                    >
+                      {saveLoading ? 'Updating...' : '📌 Save'}
+                    </button>
+
+                    <button
+                      onClick={() => updateStatus(job, 'ignored')}
+                      disabled={ignoreLoading}
+                    >
+                      {ignoreLoading ? 'Updating...' : '🚫 Ignore'}
                     </button>
                   </div>
                 </article>
