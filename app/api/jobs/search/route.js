@@ -13,6 +13,62 @@ function parseBool(value) {
   return String(value || '').toLowerCase() === 'true';
 }
 
+function uniqueStrings(values = []) {
+  return [...new Set(values.map((x) => String(x || '').trim()).filter(Boolean))];
+}
+
+function buildQueryClusters(targetTitles = []) {
+  const defaults = [
+    'Sales Manager',
+    'Sales Operations Manager',
+    'Sales Team Leader',
+    'Contact Center Manager',
+    'Contact Centre Manager',
+    'Remote Sales Manager',
+    'Telesales Manager',
+    'Outbound Sales Manager',
+    'Inside Sales Manager',
+    'Business Development Manager',
+    'Call Center Manager',
+    'Call Centre Manager',
+    'Contact Center Team Leader',
+    'Contact Centre Team Leader',
+    'Outbound Team Leader'
+  ];
+
+  const titles = uniqueStrings(targetTitles.length ? targetTitles : defaults);
+
+  const clusters = [
+    titles,
+    [
+      'sales manager',
+      'remote sales manager',
+      'sales operations manager',
+      'sales ops manager'
+    ],
+    [
+      'contact center manager',
+      'contact centre manager',
+      'call center manager',
+      'call centre manager'
+    ],
+    [
+      'sales team leader',
+      'outbound team leader',
+      'contact center team leader',
+      'contact centre team leader'
+    ],
+    [
+      'telesales manager',
+      'inside sales manager',
+      'outbound sales manager',
+      'business development manager'
+    ]
+  ];
+
+  return clusters.map((group) => uniqueStrings(group).join(' OR '));
+}
+
 export async function POST(req) {
   try {
     const body = await req.json();
@@ -42,7 +98,6 @@ export async function POST(req) {
       'automotive sales'
     ];
 
-    const query = body.query || targetTitles.join(' OR ');
     const location = body.location || '';
     const minSalary = Number(body.minSalary || 70000);
     const remoteOnly = parseBool(body.remoteOnly ?? true);
@@ -54,6 +109,8 @@ export async function POST(req) {
       .map((x) => x.trim().toLowerCase())
       .filter(Boolean);
 
+    const queryClusters = buildQueryClusters(targetTitles);
+
     const sourceResults = {
       adzuna: [],
       muse: [],
@@ -63,61 +120,87 @@ export async function POST(req) {
       jooble: []
     };
 
-    if (enabledSources.includes('adzuna')) {
-      sourceResults.adzuna = await fetchAdzunaJobs({
-        query,
-        location,
-        minSalary,
-        remoteOnly,
-        targetTitles,
-        preferredLocations,
-        excludedKeywords
-      });
+    async function addResults(sourceName, jobs) {
+      if (Array.isArray(jobs) && jobs.length) {
+        sourceResults[sourceName].push(...jobs);
+      }
+    }
+
+    for (const query of queryClusters) {
+      if (enabledSources.includes('adzuna')) {
+        await addResults(
+          'adzuna',
+          await fetchAdzunaJobs({
+            query,
+            location,
+            minSalary,
+            remoteOnly,
+            targetTitles,
+            preferredLocations,
+            excludedKeywords
+          })
+        );
+      }
+
+      if (enabledSources.includes('remotive')) {
+        await addResults(
+          'remotive',
+          await fetchRemotiveJobs({
+            query,
+            targetTitles,
+            preferredLocations,
+            excludedKeywords
+          })
+        );
+      }
+
+      if (enabledSources.includes('himalayas')) {
+        await addResults(
+          'himalayas',
+          await fetchHimalayasJobs({
+            query,
+            targetTitles,
+            preferredLocations,
+            excludedKeywords
+          })
+        );
+      }
+
+      if (enabledSources.includes('jooble')) {
+        await addResults(
+          'jooble',
+          await fetchJoobleJobs({
+            query,
+            location,
+            minSalary,
+            targetTitles,
+            preferredLocations,
+            excludedKeywords
+          })
+        );
+      }
     }
 
     if (enabledSources.includes('muse')) {
-      sourceResults.muse = await fetchMuseJobs({
-        targetTitles,
-        preferredLocations,
-        excludedKeywords
-      });
-    }
-
-    if (enabledSources.includes('remotive')) {
-      sourceResults.remotive = await fetchRemotiveJobs({
-        query,
-        targetTitles,
-        preferredLocations,
-        excludedKeywords
-      });
-    }
-
-    if (enabledSources.includes('himalayas')) {
-      sourceResults.himalayas = await fetchHimalayasJobs({
-        query,
-        targetTitles,
-        preferredLocations,
-        excludedKeywords
-      });
+      await addResults(
+        'muse',
+        await fetchMuseJobs({
+          targetTitles,
+          preferredLocations,
+          excludedKeywords
+        })
+      );
     }
 
     if (enabledSources.includes('greenhouse')) {
-      sourceResults.greenhouse = await fetchGreenhouseJobs({
-        targetTitles,
-        preferredLocations,
-        excludedKeywords
-      });
-    }
-
-    if (enabledSources.includes('jooble')) {
-      sourceResults.jooble = await fetchJoobleJobs({
-        query,
-        location,
-        minSalary,
-        targetTitles,
-        preferredLocations,
-        excludedKeywords
-      });
+      await addResults(
+        'greenhouse',
+        await fetchGreenhouseJobs({
+          targetTitles,
+          preferredLocations,
+          excludedKeywords
+        })
+      );
     }
 
     const allJobs = [
@@ -144,7 +227,7 @@ export async function POST(req) {
       return !!job.remote;
     });
 
-    const jobs = remoteFilteredJobs.slice(0, 80);
+    const jobs = remoteFilteredJobs.slice(0, 100);
 
     const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
     const supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
@@ -175,6 +258,7 @@ export async function POST(req) {
       jobs,
       debug: {
         enabledSources,
+        queryClusters,
         countsBeforeDedupe: {
           adzuna: sourceResults.adzuna.length,
           muse: sourceResults.muse.length,
