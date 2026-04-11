@@ -22,6 +22,10 @@ const defaultExcluded = [
   'automotive sales'
 ].join('\n');
 
+function stripHtml(value) {
+  return String(value || '').replace(/<[^>]*>/g, ' ').replace(/\s+/g, ' ').trim();
+}
+
 export default function JobsPage() {
   const [targetTitles, setTargetTitles] = useState(defaultTitles);
   const [preferredLocations, setPreferredLocations] = useState('Australia\nNew Zealand');
@@ -32,12 +36,14 @@ export default function JobsPage() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [jobs, setJobs] = useState([]);
+  const [debug, setDebug] = useState(null);
 
   async function runSearch(event) {
     event.preventDefault();
     setLoading(true);
     setError('');
     setJobs([]);
+    setDebug(null);
 
     try {
       const response = await fetch('/api/jobs/search', {
@@ -67,6 +73,7 @@ export default function JobsPage() {
       }
 
       setJobs(data.jobs || []);
+      setDebug(data.debug || null);
     } catch (err) {
       setError(err.message || 'Something went wrong');
     } finally {
@@ -78,9 +85,7 @@ export default function JobsPage() {
     <main className="stack">
       <section className="hero">
         <h1>Multi-Source Job Search</h1>
-        <p>
-          Search across multiple sources, filter aggressively, and save matched jobs into your pipeline.
-        </p>
+        <p>Search across multiple sources, filter aggressively, and save matched jobs into your pipeline.</p>
       </section>
 
       <section className="card">
@@ -108,7 +113,7 @@ export default function JobsPage() {
             <input
               value={location}
               onChange={(e) => setLocation(e.target.value)}
-              placeholder="Australia"
+              placeholder="Leave blank for broader results"
             />
           </label>
 
@@ -154,6 +159,21 @@ export default function JobsPage() {
         </section>
       ) : null}
 
+      {debug ? (
+        <section className="card">
+          <h2>Debug</h2>
+          <p><strong>Enabled sources:</strong> {(debug.enabledSources || []).join(', ')}</p>
+          <p><strong>Before dedupe:</strong></p>
+          <pre style={{ whiteSpace: 'pre-wrap' }}>
+            {JSON.stringify(debug.countsBeforeDedupe || {}, null, 2)}
+          </pre>
+          <p><strong>After filtering:</strong></p>
+          <pre style={{ whiteSpace: 'pre-wrap' }}>
+            {JSON.stringify(debug.countsAfterFiltering || {}, null, 2)}
+          </pre>
+        </section>
+      ) : null}
+
       <section className="card">
         <h2>Results</h2>
         {!jobs.length ? (
@@ -170,11 +190,12 @@ export default function JobsPage() {
                 <p><strong>Location:</strong> {job.location}</p>
                 <p><strong>Source:</strong> {job.source}</p>
                 <p><strong>Fit score:</strong> {job.fit_score}</p>
+                <p><strong>Matched title:</strong> {job.matched_title || 'None'}</p>
                 <p><strong>Salary:</strong> {job.salary_text || 'Not listed'}</p>
                 <p><strong>Remote:</strong> {job.remote ? 'Yes' : 'No'}</p>
                 <p style={{ whiteSpace: 'pre-wrap' }}>
-                  {String(job.description || '').slice(0, 500)}
-                  {String(job.description || '').length > 500 ? '...' : ''}
+                  {stripHtml(job.description).slice(0, 500)}
+                  {stripHtml(job.description).length > 500 ? '...' : ''}
                 </p>
                 {job.apply_url ? (
                   <a href={job.apply_url} target="_blank" rel="noreferrer">
