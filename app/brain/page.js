@@ -6,139 +6,84 @@ export default function BrainPage() {
   const [jobTitle, setJobTitle] = useState('');
   const [company, setCompany] = useState('');
   const [jobDescription, setJobDescription] = useState('');
-  const [loading, setLoading] = useState(false);
   const [result, setResult] = useState(null);
-  const [error, setError] = useState('');
+  const [error, setError] = useState(null);
+  const [loading, setLoading] = useState(false);
 
-  async function handleAnalyze(event) {
-    event.preventDefault();
+  const analyzeJob = async () => {
     setLoading(true);
-    setError('');
+    setError(null);
     setResult(null);
 
     try {
-      const response = await fetch('/api/brain/analyze', {
+      const res = await fetch('/api/brain/analyze', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ jobTitle, company, jobDescription })
       });
 
-      const data = await response.json();
+      const text = await res.text();
 
-      if (!response.ok || !data.ok) {
-        throw new Error(data.error || 'Analysis failed');
+      let data;
+      try {
+        data = JSON.parse(text);
+      } catch {
+        throw new Error('Server returned non-JSON response:\n' + text.slice(0, 300));
       }
 
-      setResult(data.modelOutput);
+      if (!res.ok) {
+        throw new Error(data.error || 'Unknown error');
+      }
+
+      setResult(data);
     } catch (err) {
-      setError(err.message || 'Something went wrong');
-    } finally {
-      setLoading(false);
+      setError(err.message);
     }
-  }
+
+    setLoading(false);
+  };
 
   return (
-    <main className="stack">
-      <section className="hero">
-        <h1>Application Brain</h1>
-        <p>Paste a job description and let the system tailor your application package.</p>
-      </section>
+    <div style={{ padding: 20 }}>
+      <h1>Application Brain</h1>
 
-      <section className="card">
-        <form onSubmit={handleAnalyze} className="form-grid">
-          <label>
-            Job title
-            <input
-              value={jobTitle}
-              onChange={(e) => setJobTitle(e.target.value)}
-              placeholder="Sales Manager"
-              required
-            />
-          </label>
+      <input
+        placeholder="Job Title"
+        value={jobTitle}
+        onChange={(e) => setJobTitle(e.target.value)}
+        style={{ width: '100%', marginBottom: 10 }}
+      />
 
-          <label>
-            Company
-            <input
-              value={company}
-              onChange={(e) => setCompany(e.target.value)}
-              placeholder="Example Company"
-              required
-            />
-          </label>
+      <input
+        placeholder="Company"
+        value={company}
+        onChange={(e) => setCompany(e.target.value)}
+        style={{ width: '100%', marginBottom: 10 }}
+      />
 
-          <label style={{ gridColumn: '1 / -1' }}>
-            Job description
-            <textarea
-              rows="14"
-              value={jobDescription}
-              onChange={(e) => setJobDescription(e.target.value)}
-              placeholder="Paste the full job description here..."
-              required
-            />
-          </label>
+      <textarea
+        placeholder="Paste Job Description"
+        value={jobDescription}
+        onChange={(e) => setJobDescription(e.target.value)}
+        rows={10}
+        style={{ width: '100%', marginBottom: 10 }}
+      />
 
-          <div style={{ gridColumn: '1 / -1' }}>
-            <button type="submit" disabled={loading}>
-              {loading ? 'Analyzing...' : 'Analyze job'}
-            </button>
-          </div>
-        </form>
-      </section>
+      <button onClick={analyzeJob} disabled={loading}>
+        {loading ? 'Analyzing...' : 'Analyze Job'}
+      </button>
 
-      {error ? (
-        <section className="card">
-          <h2>Error</h2>
-          <p>{error}</p>
-        </section>
-      ) : null}
+      {error && (
+        <pre style={{ color: 'red', marginTop: 20 }}>
+          {error}
+        </pre>
+      )}
 
-      {result ? (
-        <>
-          <section className="grid">
-            <div className="card">
-              <h2>Fit score</h2>
-              <p>{result.fitScore}/100</p>
-            </div>
-
-            <div className="card">
-              <h2>Keywords</h2>
-              <ul>
-                {result.keywords?.map((item, index) => (
-                  <li key={index}>{item}</li>
-                ))}
-              </ul>
-            </div>
-
-            <div className="card">
-              <h2>Strengths</h2>
-              <ul>
-                {result.strengths?.map((item, index) => (
-                  <li key={index}>{item}</li>
-                ))}
-              </ul>
-            </div>
-
-            <div className="card">
-              <h2>Gaps</h2>
-              <ul>
-                {result.gaps?.map((item, index) => (
-                  <li key={index}>{item}</li>
-                ))}
-              </ul>
-            </div>
-          </section>
-
-          <section className="card">
-            <h2>Tailored CV Summary</h2>
-            <p style={{ whiteSpace: 'pre-wrap' }}>{result.tailoredSummary}</p>
-          </section>
-
-          <section className="card">
-            <h2>Cover Letter</h2>
-            <p style={{ whiteSpace: 'pre-wrap' }}>{result.coverLetter}</p>
-          </section>
-        </>
-      ) : null}
-    </main>
+      {result && (
+        <pre style={{ marginTop: 20 }}>
+          {JSON.stringify(result, null, 2)}
+        </pre>
+      )}
+    </div>
   );
 }
