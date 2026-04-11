@@ -5,7 +5,9 @@ import { useEffect, useState } from "react";
 export default function InterviewPrepPage() {
   const [packages, setPackages] = useState([]);
   const [prep, setPrep] = useState(null);
-  const [loading, setLoading] = useState(false);
+  const [selectedPackage, setSelectedPackage] = useState(null);
+  const [loadingPackages, setLoadingPackages] = useState(true);
+  const [loadingPrep, setLoadingPrep] = useState(false);
   const [error, setError] = useState("");
 
   useEffect(() => {
@@ -13,6 +15,9 @@ export default function InterviewPrepPage() {
   }, []);
 
   async function loadPackages() {
+    setLoadingPackages(true);
+    setError("");
+
     try {
       const res = await fetch("/api/packages");
       const text = await res.text();
@@ -32,13 +37,16 @@ export default function InterviewPrepPage() {
     } catch (err) {
       console.error(err);
       setError(err.message || "Failed to load packages");
+    } finally {
+      setLoadingPackages(false);
     }
   }
 
   async function generatePrep(pkg) {
-    setLoading(true);
-    setError("");
+    setSelectedPackage(pkg);
     setPrep(null);
+    setLoadingPrep(true);
+    setError("");
 
     try {
       const res = await fetch("/api/interview-prep", {
@@ -58,91 +66,154 @@ export default function InterviewPrepPage() {
 
       const text = await res.text();
 
-      let parsed;
+      let data;
       try {
-        parsed = JSON.parse(text);
+        data = JSON.parse(text);
       } catch {
         throw new Error("Invalid JSON returned from interview prep API");
       }
 
-      if (!parsed.ok) {
-        throw new Error(parsed.error || "Interview prep failed");
+      if (!res.ok || !data.ok) {
+        throw new Error(data.error || "Failed to generate interview prep");
       }
 
-      setPrep(parsed.data);
+      setPrep(data.data);
     } catch (err) {
       console.error(err);
       setError(err.message || "Interview prep failed");
     } finally {
-      setLoading(false);
+      setLoadingPrep(false);
     }
   }
 
   return (
-    <div className="p-6 text-white max-w-6xl mx-auto">
-      <h1 className="text-2xl font-bold mb-4">Interview Prep Engine</h1>
+    <main className="stack">
+      <section className="hero">
+        <h1>Interview Prep Engine</h1>
+        <p>Select a saved package to generate tailored interview preparation.</p>
+      </section>
 
-      <div className="grid grid-cols-3 gap-6">
-        <div className="space-y-2">
-          {packages.map((pkg) => (
-            <div
-              key={pkg.id}
-              className="border p-3 rounded cursor-pointer hover:bg-blue-900"
-              onClick={() => generatePrep(pkg)}
-            >
-              <div className="font-semibold">{pkg.job_title}</div>
-              <div className="text-sm opacity-70">{pkg.company}</div>
-            </div>
-          ))}
-        </div>
+      {error ? (
+        <section className="card">
+          <h2>Error</h2>
+          <p>{error}</p>
+        </section>
+      ) : null}
 
-        <div className="col-span-2 space-y-4">
-          {loading && <div>Generating interview prep...</div>}
+      <section
+        style={{
+          display: "grid",
+          gridTemplateColumns: "320px 1fr",
+          gap: "20px",
+          alignItems: "start"
+        }}
+      >
+        <aside className="card">
+          <h2>Saved Packages</h2>
 
-          {error && (
-            <div className="text-red-400 border p-3 rounded">
-              Error: {error}
-            </div>
-          )}
+          {loadingPackages ? <p>Loading packages...</p> : null}
 
-          {prep && (
+          {!loadingPackages && packages.length === 0 ? (
+            <p>No saved packages found.</p>
+          ) : null}
+
+          <div style={{ display: "grid", gap: "10px" }}>
+            {packages.map((pkg) => {
+              const isSelected = selectedPackage?.id === pkg.id;
+
+              return (
+                <button
+                  key={pkg.id}
+                  onClick={() => generatePrep(pkg)}
+                  style={{
+                    textAlign: "left",
+                    padding: "12px",
+                    borderRadius: "10px",
+                    border: isSelected ? "2px solid #111" : "1px solid #ccc",
+                    background: "#fff",
+                    cursor: "pointer"
+                  }}
+                >
+                  <strong>{pkg.job_title}</strong>
+                  <div>{pkg.company}</div>
+                  <div style={{ fontSize: "12px", opacity: 0.7 }}>
+                    Fit: {pkg.fit_score ?? "-"}
+                  </div>
+                </button>
+              );
+            })}
+          </div>
+        </aside>
+
+        <section className="stack">
+          {!selectedPackage ? (
+            <section className="card">
+              <p>Select a package from the left to generate interview prep.</p>
+            </section>
+          ) : null}
+
+          {selectedPackage ? (
+            <section className="card">
+              <h2>
+                {selectedPackage.job_title} at {selectedPackage.company}
+              </h2>
+              <p><strong>Fit score:</strong> {selectedPackage.fit_score ?? "-"}</p>
+              <p><strong>Resume version:</strong> {selectedPackage.resume_version_name || "Not named"}</p>
+            </section>
+          ) : null}
+
+          {loadingPrep ? (
+            <section className="card">
+              <p>Generating interview prep...</p>
+            </section>
+          ) : null}
+
+          {prep ? (
             <>
-              <div className="border p-4 rounded">
-                <h2 className="font-bold mb-2">🔥 60s Pitch</h2>
-                <p>{prep.pitch}</p>
-              </div>
+              <section className="card">
+                <h2>🔥 60-Second Pitch</h2>
+                <p style={{ whiteSpace: "pre-wrap" }}>{prep.pitch}</p>
+              </section>
 
-              <div className="border p-4 rounded">
-                <h2 className="font-bold mb-2">Questions</h2>
-                {(prep.questions || []).map((q, i) => (
-                  <p key={i}>• {q}</p>
-                ))}
-              </div>
+              <section className="card">
+                <h2>Likely Interview Questions</h2>
+                <ul>
+                  {(prep.questions || []).map((q, i) => (
+                    <li key={i}>{q}</li>
+                  ))}
+                </ul>
+              </section>
 
-              <div className="border p-4 rounded">
-                <h2 className="font-bold mb-2">Answers</h2>
-                {(prep.answers || []).map((a, i) => (
-                  <p key={i}>• {a}</p>
-                ))}
-              </div>
+              <section className="card">
+                <h2>Strong Answer Angles</h2>
+                <ul>
+                  {(prep.answers || []).map((a, i) => (
+                    <li key={i}>{a}</li>
+                  ))}
+                </ul>
+              </section>
 
-              <div className="border p-4 rounded">
-                <h2 className="font-bold mb-2">Company Angles</h2>
-                {(prep.companyAngles || []).map((c, i) => (
-                  <p key={i}>• {c}</p>
-                ))}
-              </div>
+              <section className="card">
+                <h2>Company-Specific Angles</h2>
+                <ul>
+                  {(prep.companyAngles || []).map((c, i) => (
+                    <li key={i}>{c}</li>
+                  ))}
+                </ul>
+              </section>
 
-              <div className="border p-4 rounded">
-                <h2 className="font-bold mb-2">Red Flags</h2>
-                {(prep.redFlags || []).map((r, i) => (
-                  <p key={i}>• {r}</p>
-                ))}
-              </div>
+              <section className="card">
+                <h2>Red Flags To Prepare For</h2>
+                <ul>
+                  {(prep.redFlags || []).map((r, i) => (
+                    <li key={i}>{r}</li>
+                  ))}
+                </ul>
+              </section>
             </>
-          )}
-        </div>
-      </div>
-    </div>
+          ) : null}
+        </section>
+      </section>
+    </main>
   );
 }
