@@ -1,0 +1,100 @@
+"use client";
+
+import { useEffect, useState } from "react";
+
+export default function InterviewPrepPage() {
+  const [packages, setPackages] = useState<any[]>([]);
+  const [selected, setSelected] = useState<any>(null);
+  const [prep, setPrep] = useState<any>(null);
+  const [loading, setLoading] = useState(false);
+
+  useEffect(() => {
+    loadPackages();
+  }, []);
+
+  async function loadPackages() {
+    const res = await fetch("/api/packages");
+    const data = await res.json();
+    setPackages(data.data || []);
+  }
+
+  async function generatePrep(pkg: any) {
+    setLoading(true);
+    setSelected(pkg);
+
+    const res = await fetch("/api/interview-prep", {
+      method: "POST",
+      body: JSON.stringify(pkg)
+    });
+
+    const data = await res.json();
+    setPrep(data.data);
+    setLoading(false);
+  }
+
+  return (
+    <div className="p-6 text-white max-w-6xl mx-auto">
+      <h1 className="text-2xl font-bold mb-4">Interview Prep Engine</h1>
+
+      <div className="grid grid-cols-3 gap-6">
+
+        {/* LEFT SIDE - PACKAGES */}
+        <div className="col-span-1 space-y-2">
+          {packages.map((pkg) => (
+            <div
+              key={pkg.id}
+              className="border p-3 rounded cursor-pointer hover:bg-blue-900"
+              onClick={() => generatePrep(pkg)}
+            >
+              <div className="font-semibold">{pkg.job_title}</div>
+              <div className="text-sm opacity-70">{pkg.company}</div>
+            </div>
+          ))}
+        </div>
+
+        {/* RIGHT SIDE - OUTPUT */}
+        <div className="col-span-2 space-y-4">
+
+          {loading && <div>Generating elite interview prep...</div>}
+
+          {prep && (
+            <>
+              <div className="border p-4 rounded">
+                <h2 className="font-bold mb-2">🔥 60s Pitch</h2>
+                <p>{prep.pitch}</p>
+              </div>
+
+              <div className="border p-4 rounded">
+                <h2 className="font-bold mb-2">Top Questions</h2>
+                {prep.questions.map((q: string, i: number) => (
+                  <p key={i}>• {q}</p>
+                ))}
+              </div>
+
+              <div className="border p-4 rounded">
+                <h2 className="font-bold mb-2">Strong Answers</h2>
+                {prep.answers.map((a: string, i: number) => (
+                  <p key={i}>• {a}</p>
+                ))}
+              </div>
+
+              <div className="border p-4 rounded">
+                <h2 className="font-bold mb-2">Company Angles</h2>
+                {prep.companyAngles.map((c: string, i: number) => (
+                  <p key={i}>• {c}</p>
+                ))}
+              </div>
+
+              <div className="border p-4 rounded">
+                <h2 className="font-bold mb-2">Red Flags</h2>
+                {prep.redFlags.map((r: string, i: number) => (
+                  <p key={i}>• {r}</p>
+                ))}
+              </div>
+            </>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
