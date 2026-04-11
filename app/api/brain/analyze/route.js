@@ -4,14 +4,16 @@ export async function POST(req) {
   try {
     const { jobTitle, company, jobDescription } = await req.json();
 
-    if (!jobDescription) {
+    if (!jobTitle || !company || !jobDescription) {
       return NextResponse.json(
-        { ok: false, error: 'Missing job description' },
+        {
+          ok: false,
+          error: 'jobTitle, company, and jobDescription are required'
+        },
         { status: 400 }
       );
     }
 
-    // ---------- PRIMARY LLM (OpenAI) ----------
     const primaryRes = await fetch('https://api.openai.com/v1/chat/completions', {
       method: 'POST',
       headers: {
@@ -24,35 +26,77 @@ export async function POST(req) {
           {
             role: 'system',
             content:
-              'You are an elite job application strategist. Extract structured insights and return STRICT JSON only.'
+              'You are an expert job application strategist. Return strict JSON only. Never invent experience. Tailor honestly, strongly, and clearly for ATS-friendly screening.'
           },
           {
             role: 'user',
             content: `
-Analyze this job description and return JSON:
+Analyze this job and return JSON in exactly this shape:
 
 {
   "keywords": [],
   "strengths": [],
   "gaps": [],
   "tailoredSummary": "",
+  "tailoredSkills": [],
+  "tailoredExperienceBullets": [],
+  "resumeVersionName": "",
+  "resumeSnapshot": "",
   "coverLetter": "",
   "fitScore": 0
 }
 
-Job:
+Candidate context:
+- Name: Ben Lynch
+- Target roles: Sales Manager, Sales Operations Manager, Sales Team Leader, Contact Center Manager, Remote Sales Manager
+- Locations: Australia, New Zealand
+- Remote only: Yes
+- Minimum salary: $70k
+- Excluded industries: Finance, Investments, Real Estate, Car Sales
+- Background highlights:
+  - Remote sales leadership
+  - Team coaching and performance improvement
+  - KPI tracking including conversion, revenue, and sales per hour
+  - Contact center / sales operations thinking
+  - Recruitment, onboarding, and training support
+  - Business development and regional sales management
+  - Strong stakeholder management and process improvement
+- Important rule:
+  - Do not invent tools, achievements, or experience
+  - Reframe honestly using only the candidate's real background
+
+Job title:
+${jobTitle}
+
+Company:
+${company}
+
+Job description:
 ${jobDescription}
+
+Instructions:
+1. Extract the most important keywords and phrases from the job description
+2. List the candidate's strongest matching strengths
+3. List any meaningful gaps without inventing experience
+4. Write a tailored professional summary for the CV
+5. Write a tailored skills list
+6. Write 8 to 12 tailored experience bullets aligned to the role
+7. Create a clear resume version name using company and role
+8. Create a resume snapshot that combines the tailored summary, skills, and experience bullets into a clean plain-text resume section
+9. Write a sharp, specific cover letter for this exact role
+10. Give a realistic fit score from 0 to 100
+
+Return valid JSON only.
 `
           }
         ],
-        temperature: 0.7
+        temperature: 0.4
       })
     });
 
     const primaryData = await primaryRes.json();
     const primaryText = primaryData.choices?.[0]?.message?.content || '';
 
-    // ---------- SECONDARY LLM (Anthropic) ----------
     let secondaryText = '';
 
     if (process.env.ANTHROPIC_API_KEY) {
@@ -64,15 +108,26 @@ ${jobDescription}
           'anthropic-version': '2023-06-01'
         },
         body: JSON.stringify({
-          model: process.env.ANTHROPIC_MODEL || 'claude-3-sonnet-20240229',
-          max_tokens: 1000,
+          model: process.env.ANTHROPIC_MODEL || 'claude-sonnet-4-6',
+          max_tokens: 2000,
           messages: [
             {
               role: 'user',
               content: `
-Refine this output and ensure it is valid JSON only:
+You are reviewing a JSON response for a job application workflow.
 
+IMPORTANT:
+- You MUST return valid JSON
+- Do NOT add explanations
+- Do NOT add text outside JSON
+- Do NOT change the structure
+- Do NOT invent experience
+- Improve clarity, strength, credibility, and natural language
+
+Here is the JSON to improve:
 ${primaryText}
+
+Return ONLY valid JSON.
 `
             }
           ]
@@ -83,7 +138,6 @@ ${primaryText}
       secondaryText = secondaryData?.content?.[0]?.text || '';
     }
 
-    // ---------- FINAL OUTPUT ----------
     const finalText = secondaryText || primaryText;
 
     let parsed;
@@ -100,7 +154,6 @@ ${primaryText}
       );
     }
 
-    // ---------- SUPABASE SAVE ----------
     const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
     const supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
 
@@ -120,8 +173,13 @@ ${primaryText}
         strengths: parsed.strengths,
         gaps: parsed.gaps,
         tailored_summary: parsed.tailoredSummary,
+        tailored_skills: parsed.tailoredSkills,
+        tailored_experience_bullets: parsed.tailoredExperienceBullets,
+        resume_version_name: parsed.resumeVersionName,
+        resume_snapshot: parsed.resumeSnapshot,
         cover_letter: parsed.coverLetter,
-        fit_score: parsed.fitScore
+        fit_score: parsed.fitScore,
+        application_status: 'draft'
       })
     });
 
@@ -138,13 +196,11 @@ ${primaryText}
       );
     }
 
-    // ---------- SUCCESS ----------
     return NextResponse.json({
       ok: true,
       modelOutput: parsed,
       savedAnalysis
     });
-
   } catch (err) {
     return NextResponse.json(
       { ok: false, error: err.message },
