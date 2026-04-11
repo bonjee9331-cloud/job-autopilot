@@ -1,0 +1,77 @@
+import { NextResponse } from "next/server";
+
+export async function POST(req: Request) {
+  try {
+    const body = await req.json();
+
+    const {
+      job_title,
+      company,
+      job_description,
+      tailoredSummary,
+      tailoredExperienceBullets,
+      tailoredSkills
+    } = body;
+
+    const prompt = `
+You are an elite sales interview strategist.
+
+Generate interview preparation for this candidate.
+
+JOB:
+${job_title} at ${company}
+
+JOB DESCRIPTION:
+${job_description}
+
+CANDIDATE PROFILE:
+Summary: ${tailoredSummary}
+Skills: ${tailoredSkills?.join(", ")}
+Experience:
+${tailoredExperienceBullets?.join("\n")}
+
+Return ONLY valid JSON:
+
+{
+  "questions": [
+    "Top 10 likely interview questions tailored to this role"
+  ],
+  "answers": [
+    "Strong, confident, results-driven answers aligned to candidate experience"
+  ],
+  "pitch": "A powerful 60-second 'tell me about yourself'",
+  "companyAngles": [
+    "Specific talking points to impress THIS company"
+  ],
+  "redFlags": [
+    "Tough questions they might ask and why"
+  ]
+}
+`;
+
+    const response = await fetch("https://api.openai.com/v1/chat/completions", {
+      method: "POST",
+      headers: {
+        "Authorization": `Bearer ${process.env.OPENAI_API_KEY}`,
+        "Content-Type": "application/json"
+      },
+      body: JSON.stringify({
+        model: "gpt-5.3",
+        messages: [{ role: "user", content: prompt }],
+        temperature: 0.7
+      })
+    });
+
+    const data = await response.json();
+
+    const content = data?.choices?.[0]?.message?.content || "{}";
+
+    const parsed = JSON.parse(content);
+
+    return NextResponse.json({ ok: true, data: parsed });
+
+  } catch (err) {
+    console.error(err);
+    return NextResponse.json({ ok: false, error: "Interview prep failed" });
+  }
+}
