@@ -1,5 +1,13 @@
 import { NextResponse } from 'next/server';
 
+function tryParseJson(text) {
+  try {
+    return JSON.parse(text);
+  } catch {
+    return null;
+  }
+}
+
 export async function POST(req) {
   try {
     const { jobTitle, company, jobDescription } = await req.json();
@@ -14,7 +22,7 @@ export async function POST(req) {
       );
     }
 
-    const primaryRes = await fetch('https://api.openai.com/v1/chat/completions', {
+    const openaiResponse = await fetch('https://api.openai.com/v1/chat/completions', {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -57,7 +65,7 @@ Candidate context:
   - Remote sales leadership
   - Team coaching and performance improvement
   - KPI tracking including conversion, revenue, and sales per hour
-  - Contact center / sales operations thinking
+  - Contact center and sales operations thinking
   - Recruitment, onboarding, and training support
   - Business development and regional sales management
   - Strong stakeholder management and process improvement
@@ -94,13 +102,26 @@ Return valid JSON only.
       })
     });
 
-    const primaryData = await primaryRes.json();
-    const primaryText = primaryData.choices?.[0]?.message?.content || '';
+    const openaiText = await openaiResponse.text();
+    const openaiJson = tryParseJson(openaiText);
 
-    let secondaryText = '';
+    if (!openaiResponse.ok || !openaiJson) {
+      return NextResponse.json(
+        {
+          ok: false,
+          error: 'OpenAI request failed',
+          details: openaiJson || openaiText
+        },
+        { status: 500 }
+      );
+    }
+
+    const primaryText = openaiJson.choices?.[0]?.message?.content || '';
+
+    let finalText = primaryText;
 
     if (process.env.ANTHROPIC_API_KEY) {
-      const secondaryRes = await fetch('https://api.anthropic.com/v1/messages', {
+      const anthropicResponse = await fetch('https://api.anthropic.com/v1/messages', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -134,16 +155,26 @@ Return ONLY valid JSON.
         })
       });
 
-      const secondaryData = await secondaryRes.json();
-      secondaryText = secondaryData?.content?.[0]?.text || '';
+      const anthropicText = await anthropicResponse.text();
+      const anthropicJson = tryParseJson(anthropicText);
+
+      if (!anthropicResponse.ok || !anthropicJson) {
+        return NextResponse.json(
+          {
+            ok: false,
+            error: 'Anthropic request failed',
+            details: anthropicJson || anthropicText
+          },
+          { status: 500 }
+        );
+      }
+
+      finalText = anthropicJson?.content?.[0]?.text || primaryText;
     }
 
-    const finalText = secondaryText || primaryText;
+    const parsed = tryParseJson(finalText);
 
-    let parsed;
-    try {
-      parsed = JSON.parse(finalText);
-    } catch (err) {
+    if (!parsed) {
       return NextResponse.json(
         {
           ok: false,
@@ -157,7 +188,7 @@ Return ONLY valid JSON.
     const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
     const supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
 
-    const saveRes = await fetch(`${supabaseUrl}/rest/v1/job_analyses`, {
+    const saveResponse = await fetch(`${supabaseUrl}/rest/v1/job_analyses`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -183,14 +214,15 @@ Return ONLY valid JSON.
       })
     });
 
-    const savedAnalysis = await saveRes.json();
+    const saveText = await saveResponse.text();
+    const savedAnalysis = tryParseJson(saveText);
 
-    if (!saveRes.ok) {
+    if (!saveResponse.ok) {
       return NextResponse.json(
         {
           ok: false,
           error: 'Failed to save to Supabase',
-          details: savedAnalysis
+          details: savedAnalysis || saveText
         },
         { status: 500 }
       );
@@ -203,7 +235,10 @@ Return ONLY valid JSON.
     });
   } catch (err) {
     return NextResponse.json(
-      { ok: false, error: err.message },
+      {
+        ok: false,
+        error: err.message || 'Unknown server error'
+      },
       { status: 500 }
     );
   }
