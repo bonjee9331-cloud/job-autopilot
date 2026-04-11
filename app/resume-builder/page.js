@@ -12,6 +12,7 @@ export default function ResumeBuilderPage() {
   const [error, setError] = useState("");
   const [warning, setWarning] = useState("");
   const [copyMessage, setCopyMessage] = useState("");
+  const [rawServerResponse, setRawServerResponse] = useState("");
 
   const [contact, setContact] = useState({
     name: "Ben Lynch",
@@ -60,6 +61,7 @@ export default function ResumeBuilderPage() {
     setError("");
     setWarning("");
     setCopyMessage("");
+    setRawServerResponse("");
 
     try {
       const res = await fetch("/api/resume-builder", {
@@ -71,12 +73,13 @@ export default function ResumeBuilderPage() {
       });
 
       const text = await res.text();
+      setRawServerResponse(text);
 
       let data;
       try {
         data = JSON.parse(text);
       } catch {
-        throw new Error("Invalid JSON from resume builder API");
+        throw new Error(`Invalid JSON from resume builder API. Raw response: ${text}`);
       }
 
       if (!res.ok || !data.ok) {
@@ -167,14 +170,21 @@ export default function ResumeBuilderPage() {
       {error ? (
         <section className="card">
           <h2>Error</h2>
-          <p>{error}</p>
+          <p style={{ wordBreak: "break-word", whiteSpace: "pre-wrap" }}>{error}</p>
         </section>
       ) : null}
 
       {warning ? (
         <section className="card">
           <h2>Warning</h2>
-          <p style={{ wordBreak: "break-word" }}>{warning}</p>
+          <p style={{ wordBreak: "break-word", whiteSpace: "pre-wrap" }}>{warning}</p>
+        </section>
+      ) : null}
+
+      {rawServerResponse ? (
+        <section className="card">
+          <h2>Raw API Response</h2>
+          <pre>{rawServerResponse}</pre>
         </section>
       ) : null}
 
