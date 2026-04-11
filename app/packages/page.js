@@ -8,37 +8,49 @@ export default function PackagesPage() {
   const [error, setError] = useState('');
   const [selected, setSelected] = useState(null);
   const [copyMessage, setCopyMessage] = useState('');
+  const [actionLoading, setActionLoading] = useState(false);
 
   useEffect(() => {
-    async function loadPackages() {
-      try {
-        const res = await fetch('/api/packages');
-        const text = await res.text();
-
-        let data;
-        try {
-          data = JSON.parse(text);
-        } catch {
-          throw new Error('Server returned non-JSON response');
-        }
-
-        if (!res.ok || !data.ok) {
-          throw new Error(data.error || 'Failed to load saved packages');
-        }
-
-        setPackages(data.packages || []);
-        if (data.packages?.length) {
-          setSelected(data.packages[0]);
-        }
-      } catch (err) {
-        setError(err.message || 'Something went wrong');
-      } finally {
-        setLoading(false);
-      }
-    }
-
     loadPackages();
   }, []);
+
+  async function loadPackages() {
+    setLoading(true);
+    setError('');
+
+    try {
+      const res = await fetch('/api/packages');
+      const text = await res.text();
+
+      let data;
+      try {
+        data = JSON.parse(text);
+      } catch {
+        throw new Error('Server returned non-JSON response');
+      }
+
+      if (!res.ok || !data.ok) {
+        throw new Error(data.error || 'Failed to load saved packages');
+      }
+
+      const packageList = data.packages || [];
+      setPackages(packageList);
+
+      if (packageList.length > 0) {
+        setSelected((current) => {
+          if (!current) return packageList[0];
+          const refreshed = packageList.find((item) => item.id === current.id);
+          return refreshed || packageList[0];
+        });
+      } else {
+        setSelected(null);
+      }
+    } catch (err) {
+      setError(err.message || 'Something went wrong');
+    } finally {
+      setLoading(false);
+    }
+  }
 
   async function copyText(label, value) {
     try {
@@ -51,8 +63,42 @@ export default function PackagesPage() {
     }
   }
 
+  async function markAsApplied() {
+    if (!selected?.id) return;
+
+    setActionLoading(true);
+    setError('');
+
+    try {
+      const res = await fetch('/api/packages/apply', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ id: selected.id })
+      });
+
+      const text = await res.text();
+
+      let data;
+      try {
+        data = JSON.parse(text);
+      } catch {
+        throw new Error('Server returned non-JSON response');
+      }
+
+      if (!res.ok || !data.ok) {
+        throw new Error(data.error || 'Failed to mark as applied');
+      }
+
+      await loadPackages();
+    } catch (err) {
+      setError(err.message || 'Something went wrong');
+    } finally {
+      setActionLoading(false);
+    }
+  }
+
   function formatDate(value) {
-    if (!value) return '';
+    if (!value) return 'Not set';
     return new Date(value).toLocaleString();
   }
 
@@ -129,22 +175,45 @@ export default function PackagesPage() {
             {selected ? (
               <>
                 <section className="card">
-                  <h2>
-                    {selected.job_title} at {selected.company}
-                  </h2>
-                  <p>
-                    <strong>Fit score:</strong> {selected.fit_score ?? '-'}
-                  </p>
-                  <p>
-                    <strong>Status:</strong> {selected.application_status || 'draft'}
-                  </p>
-                  <p>
-                    <strong>Resume version:</strong>{' '}
-                    {selected.resume_version_name || 'Not named'}
-                  </p>
-                  <p>
-                    <strong>Created:</strong> {formatDate(selected.created_at)}
-                  </p>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', gap: '12px', alignItems: 'center' }}>
+                    <div>
+                      <h2>
+                        {selected.job_title} at {selected.company}
+                      </h2>
+                      <p>
+                        <strong>Fit score:</strong> {selected.fit_score ?? '-'}
+                      </p>
+                      <p>
+                        <strong>Status:</strong> {selected.application_status || 'draft'}
+                      </p>
+                      <p>
+                        <strong>Resume version:</strong>{' '}
+                        {selected.resume_version_name || 'Not named'}
+                      </p>
+                      <p>
+                        <strong>Created:</strong> {formatDate(selected.created_at)}
+                      </p>
+                      <p>
+                        <strong>Applied at:</strong> {formatDate(selected.applied_at)}
+                      </p>
+                      <p>
+                        <strong>Follow-up due:</strong> {formatDate(selected.follow_up_due_at)}
+                      </p>
+                    </div>
+
+                    <div>
+                      <button
+                        onClick={markAsApplied}
+                        disabled={actionLoading || selected.application_status === 'applied'}
+                      >
+                        {selected.application_status === 'applied'
+                          ? 'Already Applied'
+                          : actionLoading
+                          ? 'Updating...'
+                          : 'Mark as Applied'}
+                      </button>
+                    </div>
+                  </div>
                 </section>
 
                 <section className="card">
