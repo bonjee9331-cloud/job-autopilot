@@ -1,230 +1,784 @@
 "use client";
 
-import { useEffect, useMemo, useState } from 'react';
-import Badge from '../../components/Badge';
-import SectionCard from '../../components/SectionCard';
+import { useMemo, useState } from "react";
 
-const defaults = {
-  targetTitles: ['Sales Manager', 'Sales Operations Manager', 'Sales Team Leader', 'Remote Sales Manager', 'Contact Center Manager'],
-  preferredLocations: ['Australia', 'New Zealand'],
-  location: '',
-  minSalary: 70000,
-  remoteOnly: true,
-  excludedKeywords: ['finance', 'investment', 'real estate', 'car sales'],
-  strictMode: false,
-  sourcePreferences: []
-};
+const defaultTitles = [
+  "Sales Manager",
+  "Sales Operations Manager",
+  "Sales Team Leader",
+  "Contact Center Manager",
+  "Contact Centre Manager",
+  "Remote Sales Manager",
+  "Telesales Manager",
+  "Outbound Sales Manager",
+  "Inside Sales Manager"
+].join("\n");
 
-function fitTone(score) {
-  if (score >= 85) return 'green';
-  if (score >= 65) return 'blue';
-  if (score >= 45) return 'yellow';
-  return 'red';
+const defaultExcluded = [
+  "finance",
+  "investment",
+  "real estate",
+  "car sales",
+  "automotive sales"
+].join("\n");
+
+const savedProfilesSeed = [
+  {
+    id: "au-remote-sales",
+    name: "AU Remote Sales",
+    titles: defaultTitles,
+    locations: "Australia\nNew Zealand",
+    location: "",
+    minSalary: "70000",
+    remoteOnly: true,
+    excluded: defaultExcluded
+  },
+  {
+    id: "broad-commercial",
+    name: "Broad Commercial",
+    titles: [
+      "Sales Manager",
+      "Business Development Manager",
+      "Inside Sales Manager",
+      "Remote Sales Manager",
+      "Revenue Operations Manager"
+    ].join("\n"),
+    locations: "Australia\nNew Zealand\nSingapore",
+    location: "",
+    minSalary: "80000",
+    remoteOnly: true,
+    excluded: defaultExcluded
+  }
+];
+
+function stripHtml(value) {
+  return String(value || "")
+    .replace(/<[^>]*>/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+function fitBand(score) {
+  const value = Number(score || 0);
+
+  if (value >= 85) {
+    return { label: "High Fit", className: "badge badge-green" };
+  }
+  if (value >= 65) {
+    return { label: "Strong Fit", className: "badge badge-blue" };
+  }
+  if (value >= 45) {
+    return { label: "Possible Fit", className: "badge badge-yellow" };
+  }
+  return { label: "Weak Fit", className: "badge badge-red" };
+}
+
+function fitExplanation(job) {
+  const reasons = [];
+
+  if (job?.matched_title) reasons.push(`Title match: ${job.matched_title}`);
+  if (job?.remote) reasons.push("Remote-compatible role");
+  if (job?.location) reasons.push(`Location signal: ${job.location}`);
+  if (job?.salary_text) reasons.push(`Comp visible: ${job.salary_text}`);
+  if (job?.source) reasons.push(`Source confidence from ${job.source}`);
+
+  return reasons.length ? reasons : ["Ranked from title, location, remote fit, and commercial relevance signals."];
 }
 
 export default function JobsPage() {
-  const [filters, setFilters] = useState(defaults);
-  const [jobs, setJobs] = useState([]);
-  const [selectedJob, setSelectedJob] = useState(null);
+  const [targetTitles, setTargetTitles] = useState(defaultTitles);
+  const [preferredLocations, setPreferredLocations] = useState("Australia\nNew Zealand");
+  const [location, setLocation] = useState("");
+  const [minSalary, setMinSalary] = useState("70000");
+  const [remoteOnly, setRemoteOnly] = useState(true);
+  const [excludedKeywords, setExcludedKeywords] = useState(defaultExcluded);
+
   const [loading, setLoading] = useState(false);
-  const [message, setMessage] = useState('');
-  const [error, setError] = useState('');
-  const [sortBy, setSortBy] = useState('fit');
-  const [viewMode, setViewMode] = useState('cards');
-  const [profiles, setProfiles] = useState([]);
-  const [profileName, setProfileName] = useState('AU leadership sniper');
+  const [jobs, setJobs] = useState([]);
+  const [debug, setDebug] = useState(null);
+  const [error, setError] = useState("");
+  const [message, setMessage] = useState("");
 
-  useEffect(() => {
-    fetch('/api/jobs/save-profile').then((r) => r.json()).then((data) => setProfiles(data.profiles || [])).catch(() => {});
-  }, []);
+  const [sortBy, setSortBy] = useState("fit");
+  const [viewMode, setViewMode] = useState("cards");
+  const [showIgnored, setShowIgnored] = useState(false);
+  const [showDebug, setShowDebug] = useState(false);
 
-  async function runSearch() {
+  const [selectedJobId, setSelectedJobId] = useState(null);
+  const [packageLoadingId, setPackageLoadingId] = useState("");
+  const [statusLoadingId, setStatusLoadingId] = useState("");
+  const [savedProfiles] = useState(savedProfilesSeed);
+
+  function applyProfile(profile) {
+    setTargetTitles(profile.titles);
+    setPreferredLocations(profile.locations);
+    setLocation(profile.location);
+    setMinSalary(profile.minSalary);
+    setRemoteOnly(profile.remoteOnly);
+    setExcludedKeywords(profile.excluded);
+    setMessage(`Loaded profile: ${profile.name}`);
+  }
+
+  async function runSearch(event) {
+    if (event) event.preventDefault();
+
     setLoading(true);
-    setError('');
-    setMessage('');
+    setError("");
+    setMessage("");
+    setDebug(null);
+
     try {
-      const response = await fetch('/api/jobs/search', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(filters)
+      const response = await fetch("/api/jobs/search", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json"
+        },
+        body: JSON.stringify({
+          targetTitles: targetTitles.split("\n").map((x) => x.trim()).filter(Boolean),
+          preferredLocations: preferredLocations.split("\n").map((x) => x.trim()).filter(Boolean),
+          location,
+          minSalary: Number(minSalary || 0),
+          remoteOnly,
+          excludedKeywords: excludedKeywords.split("\n").map((x) => x.trim()).filter(Boolean)
+        })
       });
-      const data = await response.json();
-      if (!data.ok) throw new Error(data.error || 'Search failed');
-      setJobs(data.jobs || []);
-      setSelectedJob((data.jobs || [])[0] || null);
-      setMessage(`Loaded ${data.count || 0} targets into sniper view.`);
-    } catch (e) {
-      setError(e.message || 'Search failed');
+
+      const text = await response.text();
+
+      let data;
+      try {
+        data = JSON.parse(text);
+      } catch {
+        throw new Error("Server returned non-JSON response");
+      }
+
+      if (!response.ok || !data.ok) {
+        throw new Error(data.error || "Search failed");
+      }
+
+      const nextJobs = data.jobs || [];
+      setJobs(nextJobs);
+      setDebug(data.debug || null);
+      setMessage(`Loaded ${data.count || 0} live targets`);
+      setSelectedJobId(nextJobs[0]?.id || `${nextJobs[0]?.source}-${nextJobs[0]?.external_id}` || null);
+    } catch (err) {
+      console.error(err);
+      setError(err.message || "Something went wrong");
     } finally {
       setLoading(false);
     }
   }
 
-  async function saveProfile() {
-    try {
-      const response = await fetch('/api/jobs/save-profile', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ ...filters, name: profileName })
-      });
-      const data = await response.json();
-      if (!data.ok) throw new Error(data.error || 'Failed to save profile');
-      setProfiles((current) => [data.profile, ...current]);
-      setMessage(`Saved profile: ${data.profile.name}`);
-    } catch (e) {
-      setError(e.message || 'Failed to save profile');
-    }
-  }
-
   async function generatePackage(job) {
+    const loadingId = `${job.source}-${job.external_id}`;
+    setPackageLoadingId(loadingId);
+    setError("");
+    setMessage("");
+
     try {
-      setError('');
-      setMessage('Generating package...');
-      const response = await fetch('/api/brain/analyze', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+      const response = await fetch("/api/brain/analyze", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json"
+        },
         body: JSON.stringify({
           jobTitle: job.title,
           company: job.company,
-          jobDescription: job.description,
-          source: job.source,
-          applyUrl: job.apply_url,
-          location: job.location,
-          salaryText: job.salary_text,
-          remote: job.remote,
-          fitScore: job.fit_score,
-          matchedTitle: job.matched_title
+          jobDescription: stripHtml(job.description)
         })
       });
-      const data = await response.json();
-      if (!data.ok) throw new Error(data.error || 'Failed to generate package');
-      setMessage(`Package created and stored for ${job.title}.`);
-    } catch (e) {
-      setError(e.message || 'Failed to generate package');
+
+      const text = await response.text();
+
+      let data;
+      try {
+        data = JSON.parse(text);
+      } catch {
+        throw new Error("Server returned non-JSON response");
+      }
+
+      if (!response.ok || !data.ok) {
+        throw new Error(data.error || "Failed to generate package");
+      }
+
+      setMessage(`Package created for ${job.title}`);
+    } catch (err) {
+      console.error(err);
+      setError(err.message || "Failed to generate package");
+    } finally {
+      setPackageLoadingId("");
+    }
+  }
+
+  async function updateStatus(job, status) {
+    const loadingId = `${job.source}-${job.external_id}-${status}`;
+    setStatusLoadingId(loadingId);
+    setError("");
+    setMessage("");
+
+    try {
+      const response = await fetch("/api/pipeline/update", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json"
+        },
+        body: JSON.stringify({
+          id: job.id,
+          status
+        })
+      });
+
+      const text = await response.text();
+
+      let data;
+      try {
+        data = JSON.parse(text);
+      } catch {
+        throw new Error("Server returned non-JSON response");
+      }
+
+      if (!response.ok || !data.ok) {
+        throw new Error(data.error || "Failed to update status");
+      }
+
+      setJobs((current) =>
+        current.map((item) =>
+          item.id === job.id ? { ...item, pipeline_status: status } : item
+        )
+      );
+
+      setMessage(`${job.title} moved to ${status}`);
+    } catch (err) {
+      console.error(err);
+      setError(err.message || "Failed to update status");
+    } finally {
+      setStatusLoadingId("");
     }
   }
 
   const visibleJobs = useMemo(() => {
-    const copy = [...jobs];
-    if (sortBy === 'fit') copy.sort((a, b) => (b.fit_score || 0) - (a.fit_score || 0));
-    if (sortBy === 'salary') copy.sort((a, b) => (b.salary_max || b.salary_min || 0) - (a.salary_max || a.salary_min || 0));
-    if (sortBy === 'company') copy.sort((a, b) => String(a.company || '').localeCompare(String(b.company || '')));
-    return copy;
-  }, [jobs, sortBy]);
+    let result = [...jobs];
+
+    if (!showIgnored) {
+      result = result.filter((job) => job.pipeline_status !== "ignored");
+    }
+
+    if (sortBy === "fit") {
+      result.sort((a, b) => (b.fit_score || 0) - (a.fit_score || 0));
+    } else if (sortBy === "salary") {
+      result.sort((a, b) => {
+        const aSalary = a.salary_max || a.salary_min || 0;
+        const bSalary = b.salary_max || b.salary_min || 0;
+        return bSalary - aSalary;
+      });
+    } else if (sortBy === "title") {
+      result.sort((a, b) => String(a.title || "").localeCompare(String(b.title || "")));
+    } else if (sortBy === "company") {
+      result.sort((a, b) => String(a.company || "").localeCompare(String(b.company || "")));
+    } else if (sortBy === "source") {
+      result.sort((a, b) => String(a.source || "").localeCompare(String(b.source || "")));
+    }
+
+    return result;
+  }, [jobs, sortBy, showIgnored]);
+
+  const selectedJob =
+    visibleJobs.find((job) => job.id === selectedJobId || `${job.source}-${job.external_id}` === selectedJobId) ||
+    visibleJobs[0] ||
+    null;
 
   return (
     <main className="stack">
       <section className="hero">
-        <h1>Jobs V2 Sniper UI</h1>
-        <p>Military-grade targeting layout with fast triage, fit breakdown, saved profile shell, and one-click package generation.</p>
+        <h1>Sniper Target Acquisition</h1>
+        <p>
+          Run precision job searches, rank targets by fit, and move from discovery to package generation with minimal wasted motion.
+        </p>
       </section>
 
-      {message ? <SectionCard title="Status"><p>{message}</p></SectionCard> : null}
-      {error ? <SectionCard title="Error"><p>{error}</p></SectionCard> : null}
+      {message ? (
+        <section className="card">
+          <p>{message}</p>
+        </section>
+      ) : null}
 
-      <div style={{ display: 'grid', gridTemplateColumns: '320px 1fr 420px', gap: 18, alignItems: 'start' }}>
-        <aside className="mobile-panel filter-rail">
-          <div className="command-bar">
-            <h2 style={{ margin: 0 }}>Search Profile</h2>
-            <Badge tone={filters.strictMode ? 'orange' : 'blue'}>{filters.strictMode ? 'Sniper strict' : 'Sniper broad'}</Badge>
+      {error ? (
+        <section className="card">
+          <h2>Error</h2>
+          <p style={{ whiteSpace: "pre-wrap", wordBreak: "break-word" }}>{error}</p>
+        </section>
+      ) : null}
+
+      <section
+        style={{
+          display: "grid",
+          gridTemplateColumns: "320px minmax(0, 1fr) 420px",
+          gap: "20px",
+          alignItems: "start"
+        }}
+      >
+        <aside className="card" style={{ position: "sticky", top: "96px" }}>
+          <div style={{ display: "flex", justifyContent: "space-between", gap: "10px", alignItems: "center" }}>
+            <h2 style={{ marginBottom: 0 }}>Search Filters</h2>
+            <span className="badge badge-blue">Sniper</span>
           </div>
-          <div className="filter-block">
-            <h3>Target roles</h3>
-            <textarea rows="6" value={filters.targetTitles.join('\n')} onChange={(e) => setFilters((f) => ({ ...f, targetTitles: e.target.value.split('\n').map((x) => x.trim()).filter(Boolean) }))} />
-          </div>
-          <div className="filter-block">
-            <h3>Preferred locations</h3>
-            <textarea rows="4" value={filters.preferredLocations.join('\n')} onChange={(e) => setFilters((f) => ({ ...f, preferredLocations: e.target.value.split('\n').map((x) => x.trim()).filter(Boolean) }))} />
-          </div>
-          <div className="input-grid" style={{ gridTemplateColumns: '1fr' }}>
-            <label className="small">Specific location<input value={filters.location} onChange={(e) => setFilters((f) => ({ ...f, location: e.target.value }))} /></label>
-            <label className="small">Minimum salary<input value={filters.minSalary} onChange={(e) => setFilters((f) => ({ ...f, minSalary: Number(e.target.value || 0) }))} /></label>
-            <label className="small">Avoid list<textarea rows="4" value={filters.excludedKeywords.join('\n')} onChange={(e) => setFilters((f) => ({ ...f, excludedKeywords: e.target.value.split('\n').map((x) => x.trim()).filter(Boolean) }))} /></label>
-            <label className="row"><input style={{ width: 'auto' }} type="checkbox" checked={filters.remoteOnly} onChange={(e) => setFilters((f) => ({ ...f, remoteOnly: e.target.checked }))} /> Remote only</label>
-            <label className="row"><input style={{ width: 'auto' }} type="checkbox" checked={filters.strictMode} onChange={(e) => setFilters((f) => ({ ...f, strictMode: e.target.checked }))} /> Sniper mode strict</label>
-          </div>
-          <div className="row">
-            <button className="btn btn-primary" onClick={runSearch}>{loading ? 'Scanning...' : 'Scan Targets'}</button>
-            <button className="btn btn-secondary" onClick={() => setFilters(defaults)}>Reset</button>
-          </div>
-          <div className="filter-block">
-            <h3>Saved search profile shell</h3>
-            <input value={profileName} onChange={(e) => setProfileName(e.target.value)} placeholder="Profile name" />
-            <div className="row" style={{ marginTop: 10 }}>
-              <button className="btn btn-secondary" onClick={saveProfile}>Save Profile</button>
+
+          <div className="stack" style={{ marginTop: "16px" }}>
+            <div>
+              <p className="small" style={{ marginBottom: "8px" }}>Saved profiles</p>
+              <div style={{ display: "grid", gap: "8px" }}>
+                {savedProfiles.map((profile) => (
+                  <button
+                    key={profile.id}
+                    type="button"
+                    className="btn btn-secondary"
+                    onClick={() => applyProfile(profile)}
+                    style={{ justifyContent: "flex-start" }}
+                  >
+                    {profile.name}
+                  </button>
+                ))}
+              </div>
             </div>
-            <div className="stack" style={{ marginTop: 10 }}>
-              {profiles.slice(0, 4).map((profile) => <div key={profile.id} className="item-card"><strong>{profile.name}</strong><div className="small">{(profile.target_titles || []).slice(0, 2).join(', ')}</div></div>)}
-            </div>
+
+            <form onSubmit={runSearch} className="stack">
+              <label>
+                Target titles
+                <textarea
+                  rows="7"
+                  value={targetTitles}
+                  onChange={(e) => setTargetTitles(e.target.value)}
+                />
+              </label>
+
+              <label>
+                Preferred locations
+                <textarea
+                  rows="4"
+                  value={preferredLocations}
+                  onChange={(e) => setPreferredLocations(e.target.value)}
+                />
+              </label>
+
+              <label>
+                Specific location filter
+                <input
+                  value={location}
+                  onChange={(e) => setLocation(e.target.value)}
+                  placeholder="Leave blank for broader search"
+                />
+              </label>
+
+              <label>
+                Minimum salary
+                <input
+                  value={minSalary}
+                  onChange={(e) => setMinSalary(e.target.value)}
+                  placeholder="70000"
+                />
+              </label>
+
+              <label>
+                Excluded keywords
+                <textarea
+                  rows="5"
+                  value={excludedKeywords}
+                  onChange={(e) => setExcludedKeywords(e.target.value)}
+                />
+              </label>
+
+              <label style={{ display: "flex", alignItems: "center", gap: "10px" }}>
+                <input
+                  type="checkbox"
+                  checked={remoteOnly}
+                  onChange={(e) => setRemoteOnly(e.target.checked)}
+                  style={{ width: "auto" }}
+                />
+                Remote only
+              </label>
+
+              <button type="submit" className="btn btn-primary" disabled={loading}>
+                {loading ? "Scanning..." : "Scan Targets"}
+              </button>
+            </form>
           </div>
         </aside>
 
         <section className="stack">
-          <SectionCard title="Command Bar" subtitle="Sort, switch views, and work the queue fast" actions={<div className="row"><select value={sortBy} onChange={(e) => setSortBy(e.target.value)} style={{ width: 150 }}><option value="fit">Sort by fit</option><option value="salary">Sort by salary</option><option value="company">Sort by company</option></select><select value={viewMode} onChange={(e) => setViewMode(e.target.value)} style={{ width: 140 }}><option value="cards">Card view</option><option value="compact">Compact view</option><option value="table">Table view</option></select></div>}>
-            <div className="row">
-              <Badge tone="blue">Targets {visibleJobs.length}</Badge>
-              <Badge tone="orange">Precise</Badge>
-              <span className="small">Use the drawer to inspect fit breakdown before you commit.</span>
-            </div>
-          </SectionCard>
+          <section className="card">
+            <div
+              style={{
+                display: "flex",
+                justifyContent: "space-between",
+                gap: "14px",
+                flexWrap: "wrap",
+                alignItems: "center"
+              }}
+            >
+              <div>
+                <h2 style={{ marginBottom: "6px" }}>Target Feed</h2>
+                <p className="small">
+                  {visibleJobs.length} visible target{visibleJobs.length === 1 ? "" : "s"}
+                </p>
+              </div>
 
-          {viewMode !== 'table' ? (
-            <div className="result-list">
-              {visibleJobs.map((job) => (
-                <button key={job.id} className="job-card" style={{ textAlign: 'left', cursor: 'pointer' }} onClick={() => setSelectedJob(job)}>
-                  <div className="kpi-line"><strong>{job.title}</strong><Badge tone={fitTone(job.fit_score)}>Fit {job.fit_score || 0}</Badge></div>
-                  <div className="small">{job.company} · {job.location}</div>
-                  <div className="row">
-                    <Badge tone="blue">{job.source}</Badge>
-                    {job.remote ? <Badge tone="green">Remote</Badge> : null}
-                    {job.matched_title ? <Badge tone="yellow">{job.matched_title}</Badge> : null}
-                  </div>
-                  {viewMode === 'cards' ? <div className="small">{String(job.description || '').slice(0, 180)}...</div> : null}
-                  <div className="row"><span className="small">{job.salary_text || 'Not listed'}</span></div>
+              <div style={{ display: "flex", gap: "10px", flexWrap: "wrap" }}>
+                <select value={sortBy} onChange={(e) => setSortBy(e.target.value)} style={{ width: "160px" }}>
+                  <option value="fit">Sort by fit</option>
+                  <option value="salary">Sort by salary</option>
+                  <option value="title">Sort by title</option>
+                  <option value="company">Sort by company</option>
+                  <option value="source">Sort by source</option>
+                </select>
+
+                <select value={viewMode} onChange={(e) => setViewMode(e.target.value)} style={{ width: "160px" }}>
+                  <option value="cards">Card view</option>
+                  <option value="compact">Compact view</option>
+                  <option value="table">Table view</option>
+                </select>
+
+                <button
+                  type="button"
+                  className="btn btn-secondary"
+                  onClick={() => setShowIgnored((v) => !v)}
+                >
+                  {showIgnored ? "Hide Ignored" : "Show Ignored"}
                 </button>
-              ))}
-              {!visibleJobs.length ? <div className="small">No targets loaded yet.</div> : null}
+
+                <button
+                  type="button"
+                  className="btn btn-secondary"
+                  onClick={() => setShowDebug((v) => !v)}
+                >
+                  {showDebug ? "Hide Debug" : "Show Debug"}
+                </button>
+              </div>
             </div>
-          ) : (
-            <SectionCard title="Table View">
-              <div className="table-wrap"><table><thead><tr><th>Role</th><th>Company</th><th>Location</th><th>Source</th><th>Fit</th></tr></thead><tbody>{visibleJobs.map((job) => <tr key={job.id} onClick={() => setSelectedJob(job)}><td>{job.title}</td><td>{job.company}</td><td>{job.location}</td><td>{job.source}</td><td>{job.fit_score || 0}</td></tr>)}</tbody></table></div>
-            </SectionCard>
-          )}
+          </section>
+
+          {showDebug && debug ? (
+            <section className="card">
+              <h2>Debug Signals</h2>
+              <p><strong>Enabled sources:</strong> {(debug.enabledSources || []).join(", ")}</p>
+              <p><strong>Query clusters:</strong></p>
+              <pre>{JSON.stringify(debug.queryClusters || [], null, 2)}</pre>
+              <p><strong>Before dedupe:</strong></p>
+              <pre>{JSON.stringify(debug.countsBeforeDedupe || {}, null, 2)}</pre>
+              <p><strong>After filtering:</strong></p>
+              <pre>{JSON.stringify(debug.countsAfterFiltering || {}, null, 2)}</pre>
+            </section>
+          ) : null}
+
+          {!visibleJobs.length ? (
+            <section className="card">
+              <p>No targets loaded yet.</p>
+            </section>
+          ) : null}
+
+          {visibleJobs.length > 0 && viewMode === "cards" ? (
+            <section className="stack">
+              {visibleJobs.map((job) => {
+                const packageId = `${job.source}-${job.external_id}`;
+                const band = fitBand(job.fit_score);
+                const isSelected =
+                  selectedJobId === job.id || selectedJobId === `${job.source}-${job.external_id}`;
+                const isGenerating = packageLoadingId === packageId;
+                const shortlistLoading = statusLoadingId === `${job.source}-${job.external_id}-shortlisted`;
+                const saveLoading = statusLoadingId === `${job.source}-${job.external_id}-saved`;
+                const ignoreLoading = statusLoadingId === `${job.source}-${job.external_id}-ignored`;
+
+                return (
+                  <article
+                    key={packageId}
+                    className="card"
+                    onClick={() => setSelectedJobId(job.id || packageId)}
+                    style={{
+                      display: "grid",
+                      gap: "14px",
+                      cursor: "pointer",
+                      border: isSelected ? "2px solid #ff8a1f" : undefined
+                    }}
+                  >
+                    <div
+                      style={{
+                        display: "flex",
+                        justifyContent: "space-between",
+                        gap: "16px",
+                        flexWrap: "wrap",
+                        alignItems: "start"
+                      }}
+                    >
+                      <div>
+                        <h2 style={{ marginBottom: "8px" }}>{job.title}</h2>
+                        <p className="small" style={{ marginBottom: "8px" }}>
+                          {job.company} · {job.location}
+                        </p>
+
+                        <div style={{ display: "flex", gap: "8px", flexWrap: "wrap" }}>
+                          <span className={band.className}>
+                            {band.label} · {job.fit_score ?? "-"}
+                          </span>
+
+                          <span className="badge badge-blue">{job.source}</span>
+
+                          {job.remote ? <span className="badge badge-green">Remote</span> : null}
+
+                          <span className="badge badge-orange">
+                            {job.pipeline_status || "new"}
+                          </span>
+
+                          {job.matched_title ? (
+                            <span className="badge badge-yellow">{job.matched_title}</span>
+                          ) : null}
+                        </div>
+                      </div>
+
+                      <div style={{ textAlign: "right", minWidth: "160px" }}>
+                        <p style={{ margin: 0 }}><strong>Salary</strong></p>
+                        <p className="small" style={{ marginTop: "6px" }}>
+                          {job.salary_text || "Not listed"}
+                        </p>
+                      </div>
+                    </div>
+
+                    <p style={{ margin: 0, lineHeight: 1.6 }}>
+                      {stripHtml(job.description).slice(0, 280)}
+                      {stripHtml(job.description).length > 280 ? "..." : ""}
+                    </p>
+
+                    <div style={{ display: "flex", gap: "10px", flexWrap: "wrap" }}>
+                      {job.apply_url ? (
+                        <a
+                          href={job.apply_url}
+                          target="_blank"
+                          rel="noreferrer"
+                          className="btn btn-secondary"
+                          onClick={(e) => e.stopPropagation()}
+                        >
+                          Open Target
+                        </a>
+                      ) : null}
+
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          generatePackage(job);
+                        }}
+                        disabled={isGenerating}
+                        className="btn btn-primary"
+                      >
+                        {isGenerating ? "Generating..." : "Generate Package"}
+                      </button>
+
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          updateStatus(job, "shortlisted");
+                        }}
+                        disabled={shortlistLoading}
+                        className="btn btn-secondary"
+                      >
+                        {shortlistLoading ? "Updating..." : "⭐ Shortlist"}
+                      </button>
+
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          updateStatus(job, "saved");
+                        }}
+                        disabled={saveLoading}
+                        className="btn btn-secondary"
+                      >
+                        {saveLoading ? "Updating..." : "📌 Save"}
+                      </button>
+
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          updateStatus(job, "ignored");
+                        }}
+                        disabled={ignoreLoading}
+                        className="btn btn-secondary"
+                      >
+                        {ignoreLoading ? "Updating..." : "🚫 Ignore"}
+                      </button>
+                    </div>
+                  </article>
+                );
+              })}
+            </section>
+          ) : null}
+
+          {visibleJobs.length > 0 && viewMode === "compact" ? (
+            <section className="stack">
+              {visibleJobs.map((job) => {
+                const packageId = `${job.source}-${job.external_id}`;
+                const band = fitBand(job.fit_score);
+
+                return (
+                  <button
+                    key={packageId}
+                    onClick={() => setSelectedJobId(job.id || packageId)}
+                    className="card"
+                    style={{
+                      textAlign: "left",
+                      display: "grid",
+                      gridTemplateColumns: "1.3fr 1fr 0.6fr 0.6fr",
+                      gap: "10px",
+                      alignItems: "center"
+                    }}
+                  >
+                    <div>
+                      <strong>{job.title}</strong>
+                      <div className="small">{job.company}</div>
+                    </div>
+                    <div className="small">{job.location}</div>
+                    <div>
+                      <span className={band.className}>{job.fit_score ?? "-"}</span>
+                    </div>
+                    <div className="small">{job.pipeline_status || "new"}</div>
+                  </button>
+                );
+              })}
+            </section>
+          ) : null}
+
+          {visibleJobs.length > 0 && viewMode === "table" ? (
+            <section className="card" style={{ overflowX: "auto" }}>
+              <table>
+                <thead>
+                  <tr>
+                    <th>Role</th>
+                    <th>Company</th>
+                    <th>Location</th>
+                    <th>Source</th>
+                    <th>Fit</th>
+                    <th>Status</th>
+                    <th>Salary</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {visibleJobs.map((job) => (
+                    <tr
+                      key={`${job.source}-${job.external_id}`}
+                      onClick={() => setSelectedJobId(job.id || `${job.source}-${job.external_id}`)}
+                      style={{ cursor: "pointer" }}
+                    >
+                      <td>{job.title}</td>
+                      <td>{job.company}</td>
+                      <td>{job.location}</td>
+                      <td>{job.source}</td>
+                      <td>{job.fit_score ?? "-"}</td>
+                      <td>{job.pipeline_status || "new"}</td>
+                      <td>{job.salary_text || "Not listed"}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </section>
+          ) : null}
         </section>
 
-        <aside className="intel-panel">
-          {!selectedJob ? <p>Select a target to view intel.</p> : (
-            <div className="stack">
+        <aside className="card" style={{ position: "sticky", top: "96px" }}>
+          <div style={{ display: "flex", justifyContent: "space-between", gap: "10px", alignItems: "center" }}>
+            <h2 style={{ marginBottom: 0 }}>Intel Panel</h2>
+            {selectedJob ? (
+              <span className={fitBand(selectedJob.fit_score).className}>
+                {selectedJob.fit_score ?? "-"}
+              </span>
+            ) : null}
+          </div>
+
+          {!selectedJob ? (
+            <p style={{ marginTop: "16px" }}>Select a target to view details.</p>
+          ) : (
+            <div className="stack" style={{ marginTop: "16px" }}>
               <div>
-                <h2 style={{ marginTop: 0 }}>{selectedJob.title}</h2>
+                <h3 style={{ marginBottom: "8px" }}>{selectedJob.title}</h3>
                 <p className="small">{selectedJob.company} · {selectedJob.location}</p>
               </div>
-              <div className="row">
-                <Badge tone={fitTone(selectedJob.fit_score)}>Fit {selectedJob.fit_score || 0}</Badge>
-                <Badge tone="blue">{selectedJob.source}</Badge>
-                {selectedJob.remote ? <Badge tone="green">Remote</Badge> : null}
+
+              <div style={{ display: "flex", gap: "8px", flexWrap: "wrap" }}>
+                <span className="badge badge-blue">{selectedJob.source}</span>
+                {selectedJob.remote ? <span className="badge badge-green">Remote</span> : null}
+                <span className="badge badge-orange">{selectedJob.pipeline_status || "new"}</span>
+                {selectedJob.matched_title ? (
+                  <span className="badge badge-yellow">{selectedJob.matched_title}</span>
+                ) : null}
               </div>
-              <div className="drawer-section">
-                <div className="item-card">
-                  <strong>Fit score explanation</strong>
-                  <div className="small">Title match: {selectedJob.fit_breakdown?.titleMatch || 0} · Skill alignment: {selectedJob.fit_breakdown?.skillAlignment || 0} · Location fit: {selectedJob.fit_breakdown?.locationFit || 0} · Remote fit: {selectedJob.fit_breakdown?.remoteFit || 0} · Comp fit: {selectedJob.fit_breakdown?.compFit || 0}</div>
-                </div>
-                <div className="item-card">
-                  <strong>Role brief</strong>
-                  <div className="small">{String(selectedJob.description || '').slice(0, 650)}...</div>
-                </div>
-                <div className="item-card">
-                  <strong>Action rail</strong>
-                  <div className="row">
-                    {selectedJob.apply_url ? <a className="btn btn-secondary" href={selectedJob.apply_url} target="_blank">Open role</a> : null}
-                    <button className="btn btn-primary" onClick={() => generatePackage(selectedJob)}>Generate package</button>
-                  </div>
-                </div>
+
+              <div>
+                <p><strong>Salary</strong></p>
+                <p className="small">{selectedJob.salary_text || "Not listed"}</p>
+              </div>
+
+              <div>
+                <p><strong>Fit Explanation</strong></p>
+                <ul>
+                  {fitExplanation(selectedJob).map((item, index) => (
+                    <li key={index}>{item}</li>
+                  ))}
+                </ul>
+              </div>
+
+              <div>
+                <p><strong>Target Summary</strong></p>
+                <p style={{ lineHeight: 1.6 }}>
+                  {stripHtml(selectedJob.description).slice(0, 650)}
+                  {stripHtml(selectedJob.description).length > 650 ? "..." : ""}
+                </p>
+              </div>
+
+              <div style={{ display: "grid", gap: "10px" }}>
+                {selectedJob.apply_url ? (
+                  <a
+                    href={selectedJob.apply_url}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="btn btn-secondary"
+                  >
+                    Open Live Listing
+                  </a>
+                ) : null}
+
+                <button
+                  className="btn btn-primary"
+                  onClick={() => generatePackage(selectedJob)}
+                  disabled={packageLoadingId === `${selectedJob.source}-${selectedJob.external_id}`}
+                >
+                  {packageLoadingId === `${selectedJob.source}-${selectedJob.external_id}`
+                    ? "Generating..."
+                    : "Generate Package"}
+                </button>
+
+                <button
+                  className="btn btn-secondary"
+                  onClick={() => updateStatus(selectedJob, "shortlisted")}
+                  disabled={statusLoadingId === `${selectedJob.source}-${selectedJob.external_id}-shortlisted`}
+                >
+                  ⭐ Move To Shortlist
+                </button>
+
+                <button
+                  className="btn btn-secondary"
+                  onClick={() => updateStatus(selectedJob, "saved")}
+                  disabled={statusLoadingId === `${selectedJob.source}-${selectedJob.external_id}-saved`}
+                >
+                  📌 Save For Later
+                </button>
+
+                <button
+                  className="btn btn-secondary"
+                  onClick={() => updateStatus(selectedJob, "ignored")}
+                  disabled={statusLoadingId === `${selectedJob.source}-${selectedJob.external_id}-ignored`}
+                >
+                  🚫 Ignore Target
+                </button>
               </div>
             </div>
           )}
         </aside>
-      </div>
+      </section>
     </main>
   );
 }
