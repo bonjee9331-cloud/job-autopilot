@@ -1,22 +1,25 @@
-import './globals.css';
+import "./globals.css";
 
 export const metadata = {
-  title: 'AI Job Sniper',
-  description: 'Precision job acquisition platform'
+  title: "Job Autopilot",
+  description: "Automated job search assistant",
 };
 
-export default function RootLayout({ children }) {
+export default function RootLayout({
+  children,
+}: {
+  children: React.ReactNode;
+}) {
   const navItems = [
-    ['/dashboard', 'Dashboard'],
-    ['/jobs', 'Jobs'],
-    ['/packages', 'Packages'],
-    ['/brain', 'Brain'],
-    ['/resume-builder', 'Resume Builder'],
-    ['/followups', 'Follow-ups'],
-    ['/interviews', 'Interviews'],
-    ['/analytics', 'Analytics'],
-    ['/auto-apply', 'Auto Apply'],
-    ['/settings', 'Settings']
+    { href: "/dashboard", label: "Dashboard" },
+    { href: "/jobs", label: "Jobs" },
+    { href: "/packages", label: "Packages" },
+    { href: "/brain", label: "Brain" },
+    { href: "/resume-builder", label: "Resume Builder" },
+    { href: "/cover-letter", label: "Cover Letter" },
+    { href: "/followups", label: "Follow-ups" },
+    { href: "/interviews", label: "Interviews" },
+    { href: "/settings", label: "Settings" },
   ];
 
   return (
@@ -26,34 +29,42 @@ export default function RootLayout({ children }) {
           <aside className="sidebar">
             <div>
               <div className="brand-block">
-                <h1 className="brand-title">AI Job Sniper</h1>
-                <p className="brand-subtitle">Precision target acquisition for careers</p>
+                <h1 className="brand-title">Job Autopilot</h1>
+                <p className="brand-subtitle">Automated search system</p>
               </div>
+
               <nav className="sidebar-nav">
-                {navItems.map(([href, label]) => (
-                  <a key={href} href={href} className="nav-link">{label}</a>
+                {navItems.map((item) => (
+                  <a key={item.href} href={item.href} className="nav-link">
+                    {item.label}
+                  </a>
                 ))}
               </nav>
             </div>
+
             <div className="sidebar-footer">
-              <span className="badge badge-orange">Live Build</span>
-              <p>Royal Blue Ops Theme</p>
+              <div className="badge badge-orange">Live Build</div>
+              <p>Ben Lynch System</p>
             </div>
           </aside>
+
           <main className="main-shell">
             <header className="topbar">
               <div>
                 <h2 className="topbar-title">Your pipeline control center</h2>
-                <p className="topbar-subtitle">Quiet automation. Precise targeting. Human output.</p>
+                <p className="topbar-subtitle">Hua Hin · AU focus · remote-first workflow</p>
               </div>
+
               <div className="topbar-actions">
                 <a href="/jobs" className="btn btn-primary">Search Jobs</a>
-                <a href="/packages" className="btn btn-secondary">Packages</a>
+                <a href="/packages" className="btn btn-secondary">Open Packages</a>
                 <a href="/resume-builder" className="btn btn-secondary">Resume Builder</a>
+                <a href="/cover-letter" className="btn btn-secondary">Cover Letter</a>
                 <a href="/followups" className="btn btn-secondary">Follow-ups</a>
               </div>
             </header>
-            <div className="page-wrap">{children}</div>
+
+            <section className="page-wrap">{children}</section>
           </main>
         </div>
       </body>
