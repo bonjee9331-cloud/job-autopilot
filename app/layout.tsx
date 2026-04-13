@@ -13,7 +13,8 @@ export default function RootLayout({
   const navItems = [
     { href: "/dashboard", label: "Dashboard" },
     { href: "/jobs", label: "Jobs" },
-    { href: "/apply", label: "Apply" }, // ✅ ADDED
+    { href: "/apply", label: "Apply" },
+    { href: "/analytics", label: "Analytics" },
     { href: "/packages", label: "Packages" },
     { href: "/brain", label: "Brain" },
     { href: "/resume-builder", label: "Resume Builder" },
@@ -27,8 +28,6 @@ export default function RootLayout({
     <html lang="en">
       <body>
         <div className="app-shell">
-          
-          {/* Sidebar */}
           <aside className="sidebar">
             <div>
               <div className="brand-block">
@@ -51,10 +50,7 @@ export default function RootLayout({
             </div>
           </aside>
 
-          {/* Main */}
           <main className="main-shell">
-            
-            {/* Topbar */}
             <header className="topbar">
               <div>
                 <h2 className="topbar-title">Pipeline Control System</h2>
@@ -64,32 +60,19 @@ export default function RootLayout({
               </div>
 
               <div className="topbar-actions">
-                <a href="/jobs" className="btn btn-primary">
-                  Search Jobs
-                </a>
-                <a href="/apply" className="btn btn-secondary">
-                  Apply
-                </a>
-                <a href="/packages" className="btn btn-secondary">
-                  Packages
-                </a>
-                <a href="/resume-builder" className="btn btn-secondary">
-                  Resume
-                </a>
-                <a href="/cover-letter" className="btn btn-secondary">
-                  Cover Letter
-                </a>
-                <a href="/followups" className="btn btn-secondary">
-                  Follow-ups
-                </a>
+                <a href="/jobs" className="btn btn-primary">Search Jobs</a>
+                <a href="/apply" className="btn btn-secondary">Apply</a>
+                <a href="/analytics" className="btn btn-secondary">Analytics</a>
+                <a href="/packages" className="btn btn-secondary">Packages</a>
+                <a href="/resume-builder" className="btn btn-secondary">Resume</a>
+                <a href="/cover-letter" className="btn btn-secondary">Cover Letter</a>
+                <a href="/followups" className="btn btn-secondary">Follow-ups</a>
               </div>
             </header>
 
-            {/* Page content */}
             <section className="page-wrap">
               {children}
             </section>
-
           </main>
         </div>
       </body>
