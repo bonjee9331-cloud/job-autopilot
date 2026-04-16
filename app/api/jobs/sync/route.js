@@ -1,20 +1,34 @@
-import { jobs } from '../../../../lib/demo-data';
+import { NextResponse } from 'next/server';
+import { runIngestion } from '../../../../lib/jobs/ingest';
 
-function isAuthorized(request) {
-  const required = process.env.JOB_SYNC_API_KEY;
-  if (!required) return true;
-  return request.headers.get('x-api-key') === required;
-}
+export const dynamic = 'force-dynamic';
+export const runtime = 'nodejs';
 
-export async function POST(request) {
-  if (!isAuthorized(request)) {
-    return Response.json({ ok: false, error: 'Unauthorized' }, { status: 401 });
+export async function POST(req) {
+  const apiKey = process.env.JOB_SYNC_API_KEY;
+
+  if (process.env.NODE_ENV === 'production' && !apiKey) {
+    return NextResponse.json(
+      { ok: false, error: 'JOB_SYNC_API_KEY not configured' },
+      { status: 403 }
+    );
   }
 
-  return Response.json({
-    ok: true,
-    syncedAt: new Date().toISOString(),
-    jobCount: jobs.length,
-    jobs
-  });
+  const headerKey = req.headers.get('x-api-key');
+  if (process.env.NODE_ENV === 'production' && headerKey !== apiKey) {
+    return NextResponse.json(
+      { ok: false, error: 'Unauthorized' },
+      { status: 401 }
+    );
+  }
+
+  try {
+    const result = await runIngestion();
+    return NextResponse.json({ ok: true, ...result });
+  } catch (err) {
+    return NextResponse.json(
+      { ok: false, error: err.message || 'Unknown error' },
+      { status: 500 }
+    );
+  }
 }
